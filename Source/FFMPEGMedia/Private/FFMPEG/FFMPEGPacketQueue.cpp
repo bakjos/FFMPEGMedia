@@ -50,9 +50,9 @@ AVPacket* FFMPEGPacketQueue::flush_pkt() {
 int FFMPEGPacketQueue::put(AVPacket *pkt) {
     int ret;
 
-    mutex.lock();
+    mutex.Lock();
     ret = put_private( pkt);
-    mutex.unlock();
+    mutex.Unlock();
 
     if (pkt != flush_pkt() && ret < 0)
         av_packet_unref(pkt);
@@ -101,7 +101,7 @@ int  FFMPEGPacketQueue::get(AVPacket *pkt, int block, int *serial) {
     MyAVPacketList *pkt1;
     int ret;
 
-    mutex.lock();
+    mutex.Lock();
 
     for (;;) {
         if (abort_request) {
@@ -132,29 +132,29 @@ int  FFMPEGPacketQueue::get(AVPacket *pkt, int block, int *serial) {
             cond.wait(mutex);
         }
     }
-    mutex.unlock();
+    mutex.Unlock();
     return ret;
 }
 
 
 void FFMPEGPacketQueue::abort() {
-    mutex.lock();
+    mutex.Lock();
     abort_request = 1;
     cond.signal();
-    mutex.unlock();
+    mutex.Unlock();
 }
 
 void FFMPEGPacketQueue::start() {
-    mutex.lock();
+    mutex.Lock();
     abort_request = 0;
     put_private(flush_pkt());
-    mutex.unlock();
+    mutex.Unlock();
 }
 
 void FFMPEGPacketQueue::flush() {
     MyAVPacketList *pkt, *pkt1;
 
-    mutex.lock();
+    mutex.Lock();
     for (pkt = first_pkt; pkt; pkt = pkt1) {
         pkt1 = pkt->next;
         av_packet_unref(&pkt->pkt);
@@ -165,7 +165,7 @@ void FFMPEGPacketQueue::flush() {
     nb_packets = 0;
     size = 0;
     duration = 0;
-    mutex.unlock();
+    mutex.Unlock();
 }
 
 int FFMPEGPacketQueue::put_flush() {

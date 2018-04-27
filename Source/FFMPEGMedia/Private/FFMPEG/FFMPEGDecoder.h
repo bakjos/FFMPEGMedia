@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mutex>
+
 #include "CondWait.h"
 #include "FFMPEGPacketQueue.h"
 #include "FFMPEGFrameQueue.h"
@@ -22,7 +22,7 @@ public:
     void set_decoder_reorder_pts ( int pts );
     void abort(FFMPEGFrameQueue* fq);
     void destroy();
-    int start(std::function<int (void *)> thread_func, void *arg );
+    int start();
 
     AVCodecContext* get_avctx();
     int get_pkt_serial();
@@ -44,6 +44,5 @@ private:
     AVRational start_pts_tb;
     int64_t next_pts;
     AVRational next_pts_tb;
-    std::thread *decoder_tid;
 };
 

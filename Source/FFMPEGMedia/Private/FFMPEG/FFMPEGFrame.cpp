@@ -12,6 +12,7 @@ FFMPEGFrame::FFMPEGFrame()
     format = 0;    
     uploaded = 0;
     flip_v = 0;
+    sub = {0};
 }
 
 FFMPEGFrame::~FFMPEGFrame()

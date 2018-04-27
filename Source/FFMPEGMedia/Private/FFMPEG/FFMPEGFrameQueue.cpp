@@ -46,9 +46,9 @@ void FFMPEGFrameQueue::destroy() {
 }
 
 void FFMPEGFrameQueue::signal() {
-    mutex.lock();
+    mutex.Lock();
     cond.signal();
-    mutex.unlock();
+    mutex.Unlock();
 }
 
 FFMPEGFrame *FFMPEGFrameQueue::peek() {
@@ -64,12 +64,12 @@ FFMPEGFrame *FFMPEGFrameQueue::peek_last() {
 }
 
 FFMPEGFrame *FFMPEGFrameQueue::peek_writable() {
-    mutex.lock();
+    mutex.Lock();
     while (size >= max_size &&
         !pktq->get_abort_request()) {
         cond.wait(mutex);
     }
-    mutex.unlock();
+    mutex.Unlock();
 
     if (pktq->get_abort_request())
         return NULL;
@@ -77,12 +77,12 @@ FFMPEGFrame *FFMPEGFrameQueue::peek_writable() {
     return queue[windex];
 }
 FFMPEGFrame *FFMPEGFrameQueue::peek_readable() {
-    mutex.lock();
+    mutex.Lock();
     while (size - rindex_shown <= 0 &&
         !pktq->get_abort_request()) {
         cond.wait(mutex);
     }
-    mutex.unlock();
+    mutex.Unlock();
 
     if (pktq->get_abort_request())
         return NULL;
@@ -106,10 +106,10 @@ int FFMPEGFrameQueue::queue_picture( AVFrame *src_frame, double pts, double dura
 void FFMPEGFrameQueue::push() {
     if (++windex == max_size)
         windex = 0;
-    mutex.lock();
+    mutex.Lock();
     size++;
     cond.signal();
-    mutex.unlock();
+    mutex.Unlock();
 }
 
 void FFMPEGFrameQueue::next() {
@@ -120,19 +120,19 @@ void FFMPEGFrameQueue::next() {
     queue[rindex]->unref();
     if (++rindex == max_size)
         rindex = 0;
-    mutex.lock();
+    mutex.Lock();
     size--;
     cond.signal();
-    mutex.unlock();
+    mutex.Unlock();
    
 }
 
 void FFMPEGFrameQueue::lock() {
-    mutex.lock();
+    mutex.Lock();
 }
 
 void FFMPEGFrameQueue::unlock() {
-    mutex.unlock();
+    mutex.Unlock();
 }
 
 int FFMPEGFrameQueue::get_nb_remaining() {

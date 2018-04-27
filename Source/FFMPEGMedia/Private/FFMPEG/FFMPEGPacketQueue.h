@@ -42,7 +42,7 @@ protected:
     int abort_request;
     int serial;
     
-    std::recursive_mutex mutex;
+    FCriticalSection mutex;
     CondWait cond;
 
     friend class FFMPEGClock;

@@ -3,7 +3,7 @@
 using UnrealBuildTool;
 using System.IO;
 
-public class UnrealFFMPEG : ModuleRules
+public class FFMPEGMedia : ModuleRules
 {
 
 	private string ModulePath
@@ -96,55 +96,37 @@ public class UnrealFFMPEG : ModuleRules
 		return isLibrarySupported;
 	}
 
-	public UnrealFFMPEG(ReadOnlyTargetRules Target) : base(Target)
+	public FFMPEGMedia(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
-		PublicIncludePaths.AddRange(
-			new string[] {
-				"UnrealFFMPEG/Public"
-				// ... add public include paths required here ...
-			}
-			);
-				
-		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				"UnrealFFMPEG/Private",
-				// ... add other private include paths required here ...
-			}
-			);
-			
-		
-		PublicDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"Core",
-				"RenderCore",
-				"RHI",
-				"ShaderCore",
-			}
-			);
-			
-		
-		PrivateDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"CoreUObject",
-				"Engine",
-				"Slate",
-				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
-			}
-			);
-		
+		OptimizeCode = CodeOptimization.Never;
 		
 		DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-				// ... add any modules that your module loads dynamically here ...
-			}
-			);
+			new string[] {
+				"Media",
+			});
+
+		PrivateDependencyModuleNames.AddRange(
+			new string[] {
+				"Core",
+				"CoreUObject",
+				"Engine",
+				"MediaUtils",
+				"RenderCore",
+				"FFMPEGMediaFactory",
+			});
+
+		PrivateIncludePathModuleNames.AddRange(
+			new string[] {
+				"Media",
+			});
+
+		PrivateIncludePaths.AddRange(
+			new string[] {
+				"FFMPEGMedia/Private",
+				"FFMPEGMedia/Private/Player",
+				"FFMPEGMedia/Private/FFMPEG",
+			});
 
 		LoadFFmpeg(Target);
 	}

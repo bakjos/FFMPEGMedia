@@ -1,7 +1,7 @@
 #pragma once
 #include <mutex>
 #include "FFMPEGPacketQueue.h"
-#include "CondWait.h"
+
 
 #ifndef  FFMAX
 #define FFMAX(a,b) ((a) > (b) ? (a) : (b))
@@ -53,7 +53,7 @@ private:
     int max_size;
     int keep_last;
     int rindex_shown;
-    std::recursive_mutex mutex;
+    FCriticalSection mutex;
     CondWait cond;
     FFMPEGPacketQueue *pktq;
 };

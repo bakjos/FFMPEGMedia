@@ -1,5 +1,5 @@
 #include "FFMPEGDecoder.h"
-
+#include "LambdaRunnable.h"
 
 
 FFMPEGDecoder::FFMPEGDecoder() {
@@ -14,7 +14,7 @@ FFMPEGDecoder::FFMPEGDecoder() {
     start_pts_tb = {0,0};
     next_pts = 0;
     next_pts_tb = {0, 0};
-    decoder_tid = NULL;
+    pkt = {0};
 }
 
 
@@ -130,43 +130,20 @@ void FFMPEGDecoder::set_decoder_reorder_pts ( int pts ) {
     decoder_reorder_pts = pts;
 }
 
-void  FFMPEGDecoder::destroy() {
-    
-    if (pkt.data) {
-        av_packet_unref(&pkt);
-    }
-
-    if ( avctx != NULL) {
-        avcodec_free_context(&avctx);
-    }
+void  FFMPEGDecoder::destroy() {    
+    av_packet_unref(&pkt);
+    avcodec_free_context(&avctx);
 }
 
 void FFMPEGDecoder::abort(FFMPEGFrameQueue* fq) {
     queue->abort();
     fq->signal();
-    try {
-        if (decoder_tid->joinable()) {
-            decoder_tid->join();
-        }
-    }
-    catch (std::system_error &) {
-    }
-    
-    delete decoder_tid;
-    decoder_tid = NULL;
     queue->flush();
 }
 
-int FFMPEGDecoder::start(std::function<int (void *)> thread_func, void *arg ) {
+int FFMPEGDecoder::start() {
     queue->start();
 
-    std::thread cpp_thread(thread_func, arg);
-    decoder_tid = new std::thread(std::move(cpp_thread));
-
-    if (!decoder_tid) {
-        //av_log(NULL, AV_LOG_ERROR, "SDL_CreateThread(): %s\n", SDL_GetError());
-        return AVERROR(ENOMEM);
-    }
     return 0;
 }
 
