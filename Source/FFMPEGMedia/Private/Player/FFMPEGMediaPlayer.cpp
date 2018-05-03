@@ -167,7 +167,7 @@ bool FFFMPEGMediaPlayer::Open(const TSharedRef<FArchive, ESPMode::ThreadSafe>& A
 }
 
 
-void FFFMPEGMediaPlayer::TickFetch(FTimespan /*DeltaTime*/, FTimespan /*Timecode*/)
+void FFFMPEGMediaPlayer::TickFetch(FTimespan DeltaTime, FTimespan Timecode)
 {
 	bool MediaSourceChanged = false;
 	bool TrackSelectionChanged = false;
@@ -205,8 +205,9 @@ void FFFMPEGMediaPlayer::TickFetch(FTimespan /*DeltaTime*/, FTimespan /*Timecode
 }
 
 
-void FFFMPEGMediaPlayer::TickInput(FTimespan DeltaTime, FTimespan /*Timecode*/)
+void FFFMPEGMediaPlayer::TickInput(FTimespan DeltaTime, FTimespan Timecode)
 {
+    Tracks->TickInput(DeltaTime, Timecode);
 	
     // forward session events
     TArray<EMediaEvent> OutEvents;

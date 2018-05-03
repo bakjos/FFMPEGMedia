@@ -15,6 +15,7 @@ FFMPEGDecoder::FFMPEGDecoder() {
     next_pts = 0;
     next_pts_tb = {0, 0};
     pkt = {0};
+    decoder_tid = NULL;
 }
 
 
@@ -138,11 +139,39 @@ void  FFMPEGDecoder::destroy() {
 void FFMPEGDecoder::abort(FFMPEGFrameQueue* fq) {
     queue->abort();
     fq->signal();
+
+    try {
+        if (decoder_tid->joinable()) {
+            decoder_tid->join();
+        }
+    }
+    catch (std::system_error &) {
+    }
+
+    delete decoder_tid;
+
     queue->flush();
 }
 
-int FFMPEGDecoder::start() {
+int FFMPEGDecoder::start(std::function<int (void *)> thread_func, void *arg ) {
     queue->start();
+
+    std::thread cpp_thread(thread_func, arg);
+    decoder_tid = new std::thread(std::move(cpp_thread));
+
+    if (!decoder_tid) {
+        //av_log(NULL, AV_LOG_ERROR, "SDL_CreateThread(): %s\n", SDL_GetError());
+        return AVERROR(ENOMEM);
+    }
+#ifdef TARGET_WIN32
+    HANDLE hThread = decoder_tid->native_handle();
+    int currentPriority = GetThreadPriority(hThread);
+
+    if (currentPriority != THREAD_PRIORITY_HIGHEST &&
+        SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST) == 0) {
+        OFX_LOG(ofx_error, "Error setting the thread priority");
+    }
+#endif
 
     return 0;
 }

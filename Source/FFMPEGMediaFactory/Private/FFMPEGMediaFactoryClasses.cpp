@@ -6,6 +6,10 @@
 UFFMPEGMediaSettings::UFFMPEGMediaSettings()
     : UseInfiniteBuffer (false)
     , UseHardwareAcceleratedCodecs (true)
-    , AllowFrameDrop (false)
+    , AllowFrameDrop (true)
+    , DisableAudio (false)
+    , SpeedUpTricks (false)
+    , AudioThreads(0)
+    , VideoThreads(0)
     , SyncType  (ESynchronizationType::AudioMaster)
 { }

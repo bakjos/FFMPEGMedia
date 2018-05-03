@@ -11,11 +11,11 @@ extern "C" {
 
 FFMPEGClock::FFMPEGClock()
 {
-    pts = 0.0;           /* clock base */
-    pts_drift = 0.0;     /* clock base minus time at which we updated the clock */
+    pts = 0.0;           
+    pts_drift = 0.0;     
     last_updated = 0.0;
     speed = 0.0;
-    serial = 0;           /* clock is based on a packet with this serial */
+    serial = 0;           
     paused = 0;
     queue_serial = NULL;
 }

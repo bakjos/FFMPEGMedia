@@ -15,6 +15,8 @@ enum class ESynchronizationType : uint8 {
     ExternalClock
 };
 
+
+
 /**
  * Settings for the WmfMedia plug-in.
  */
@@ -41,6 +43,19 @@ public:
 
     UPROPERTY(config, EditAnywhere, Category = Media)
     bool UseHardwareAcceleratedCodecs;
+
+    UPROPERTY(config, EditAnywhere, Category = Media)
+    bool DisableAudio;
+
+    //Allow non spec compliant speedup tricks.
+    UPROPERTY(config, EditAnywhere, Category = Media)
+    bool SpeedUpTricks;
+
+    UPROPERTY(config, EditAnywhere, Category = Media, meta = (UIMin=0, UIMax = 32))
+    int AudioThreads;
+
+    UPROPERTY(config, EditAnywhere, Category = Media, meta = (UIMin=0, UIMax = 32))
+    int VideoThreads;
 
 	UPROPERTY(config, EditAnywhere, Category = Media)
 	ESynchronizationType SyncType;

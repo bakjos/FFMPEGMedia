@@ -99,6 +99,7 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
     , CurrentTime(FTimespan::Zero())
     , CurrentRate(0.0f)
     , ShouldLoop(false)
+    , bPrerolled(false)
     , ic(NULL)
     , aborted(false)
     , displayRunning(false)
@@ -122,6 +123,8 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
     , video_stream(-1)
     , audio_stream(-1)
     , subtitle_stream(-1)
+    , current_streams(0)
+    , total_streams(0)
     , force_refresh(false)
     , frame_drops_late(0)
     , frame_drops_early(0)
@@ -140,8 +143,11 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
     , audio_diff_avg_coef(0)
     , audio_diff_threshold(0)
     , audio_diff_avg_count(0)
-    , audio_diff_cum(0)
-{ }
+    , audio_diff_cum(0) {
+    
+    numNonOverlaps = 0;
+    numIgnores = 0;
+}
 
 
 FFFMPEGMediaTracks::~FFFMPEGMediaTracks()
@@ -267,6 +273,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
     extclk.init(&extclk);
     
     this->ic = ic;
+    audio_clock_serial = -1;
 
     CurrentState = EMediaState::Preparing;
 
@@ -276,7 +283,11 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
 
     for (int i = 0; i < (int)ic->nb_streams; i++) {
         AVStream *st = ic->streams[i];
-        AllStreamsAdded &= AddStreamToTracks(i, false, Info);
+        bool streamAdded = AddStreamToTracks(i, false, Info);
+        AllStreamsAdded &= streamAdded;
+        if ( streamAdded) {
+            total_streams++;
+        }
         enum AVMediaType type = st->codecpar->codec_type;
         st->discard = AVDISCARD_ALL;
     }
@@ -372,6 +383,16 @@ void FFFMPEGMediaTracks::Shutdown()
 
 	MediaSourceChanged = false;
 	SelectionChanged = false;
+
+    current_streams = 0;
+    total_streams = 0;
+}
+
+void FFFMPEGMediaTracks::TickInput(FTimespan DeltaTime, FTimespan Timecode) {
+    TargetTime = Timecode;
+
+    double time = Timecode.GetTotalSeconds();
+    UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks: %p: TimeCode %.3f"), this, (float)time);
 }
 
 
@@ -381,6 +402,12 @@ void FFFMPEGMediaTracks::Shutdown()
 bool FFFMPEGMediaTracks::FetchAudio(TRange<FTimespan> TimeRange, TSharedPtr<IMediaAudioSample, ESPMode::ThreadSafe>& OutSample)
 {
 	TSharedPtr<IMediaAudioSample, ESPMode::ThreadSafe> Sample;
+
+    FTimespan timeSpan = TimeRange.Size<FTimespan>();
+
+    double time = timeSpan.GetTotalSeconds();
+    UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks: %p: TimeCode %.3f"), this, (float)time);
+
 
 	if (!AudioSampleQueue.Peek(Sample))
 	{
@@ -398,6 +425,9 @@ bool FFFMPEGMediaTracks::FetchAudio(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 	{
 		return false;
 	}
+
+
+    
 
 	OutSample = Sample;
 
@@ -465,6 +495,7 @@ bool FFFMPEGMediaTracks::FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 
 	if (!VideoSampleQueue.Peek(Sample))
 	{
+        numIgnores++;
 		return false;
 	}
 
@@ -472,6 +503,7 @@ bool FFFMPEGMediaTracks::FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
+        numNonOverlaps++;
 		return false;
 	}
 
@@ -828,7 +860,7 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 			
 		*SelectedTrack = INDEX_NONE;
 		SelectionChanged = true;
-
+        current_streams--;
        
 	}
 
@@ -836,8 +868,13 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 	if (TrackIndex != INDEX_NONE)
 	{
 		const DWORD StreamIndex = (*Tracks)[TrackIndex].StreamIndex;
-        StreamComponentOpen(StreamIndex);
-		UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks %p: Enabled stream %i"), this, StreamIndex);
+        const auto Settings = GetDefault<UFFMPEGMediaSettings>();
+
+        if (TrackType != EMediaTrackType::Audio || (TrackType == EMediaTrackType::Audio && !Settings->DisableAudio) ) {
+            StreamComponentOpen(StreamIndex);
+            current_streams++;
+		    UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks %p: Enabled stream %i"), this, StreamIndex);
+        }
 
 		*SelectedTrack = TrackIndex;
 		SelectionChanged = true;
@@ -933,10 +970,10 @@ bool FFFMPEGMediaTracks::SetVideoTrackFrameRate(int32 TrackIndex, int32 FormatIn
 
 
 bool FFFMPEGMediaTracks::CanControl(EMediaControl Control) const {
-    /*if (!bPrerolled)
+    if (!bPrerolled)
     {
         return false;
-    }*/
+    }
 
     if (Control == EMediaControl::Pause)
     {
@@ -1006,31 +1043,18 @@ bool FFFMPEGMediaTracks::SetLooping(bool Looping) {
 bool FFFMPEGMediaTracks::SetRate(float Rate) {
     CurrentRate = Rate;
 
-    /*if (bPrerolled)
-    {
-        [MediaPlayer setRate : CurrentRate];
 
+    if (bPrerolled) {
         if (FMath::IsNearlyZero(Rate))
         {
             CurrentState = EMediaState::Paused;
-            EventSink.ReceiveMediaEvent(EMediaEvent::PlaybackSuspended);
+            DeferredEvents.Enqueue(EMediaEvent::PlaybackSuspended);
         }
         else
         {
             CurrentState = EMediaState::Playing;
-            EventSink.ReceiveMediaEvent(EMediaEvent::PlaybackResumed);
+            DeferredEvents.Enqueue(EMediaEvent::PlaybackResumed);
         }
-    }*/
-
-    if (FMath::IsNearlyZero(Rate))
-    {
-        CurrentState = EMediaState::Paused;
-        DeferredEvents.Enqueue(EMediaEvent::PlaybackSuspended);
-    }
-    else
-    {
-        CurrentState = EMediaState::Playing;
-        DeferredEvents.Enqueue(EMediaEvent::PlaybackResumed);
     }
 
     return true;
@@ -1055,6 +1079,12 @@ bool FFFMPEGMediaTracks::AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevic
 
         return false;
     }
+
+    const auto Settings = GetDefault<UFFMPEGMediaSettings>();
+
+   if ( Settings->DisableAudio && MediaType == AVMEDIA_TYPE_AUDIO ) {
+       return false;
+   }
 
 	// create & add track
 	FTrack* Track = nullptr;
@@ -1311,6 +1341,9 @@ int FFFMPEGMediaTracks::StreamHasEnoughPackets(AVStream *st, int stream_id, FFMP
 
 
 int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
+
+    const auto Settings = GetDefault<UFFMPEGMediaSettings>();
+
     AVCodecContext *avctx;
     AVCodec *codec;
     const char *forced_codec_name = NULL;
@@ -1318,7 +1351,7 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
 
     AVDictionaryEntry *t = NULL;
     int ret = 0;
-    int fast = 0;
+    
     int stream_lowres = 0;
 
     if (stream_index < 0 || stream_index >= (int)ic->nb_streams)
@@ -1333,7 +1366,7 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
     }
     av_codec_set_pkt_timebase(avctx, ic->streams[stream_index]->time_base);
 
-    const auto Settings = GetDefault<UFFMPEGMediaSettings>();
+    
 
     if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
         codec = FindDecoder(avctx->codec_id, true);
@@ -1353,15 +1386,22 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
 
     if (stream_lowres) avctx->flags |= CODEC_FLAG_EMU_EDGE;
 
-    if (fast)
+    if (Settings->SpeedUpTricks)
         avctx->flags2 |= AV_CODEC_FLAG2_FAST;
 
     if (codec->capabilities & AV_CODEC_CAP_DR1)
         avctx->flags |= CODEC_FLAG_EMU_EDGE;
 
-   
-    if (!av_dict_get(opts, "threads", NULL, 0))
-        av_dict_set(&opts, "threads", "auto", 0);
+    int thread_count = 0;
+    if ( avctx->codec_type == AVMEDIA_TYPE_VIDEO ) thread_count = Settings->VideoThreads;
+    if ( avctx->codec_type == AVMEDIA_TYPE_AUDIO ) thread_count = Settings->AudioThreads;
+
+    if (!thread_count) {
+        thread_count = av_cpu_count();
+    }
+
+    avctx->thread_count = FFMAX(1, FFMIN(thread_count, 32));
+    av_dict_set(&opts, "threads", TCHAR_TO_UTF8(*FString::FromInt(thread_count)), 0);
 
     if (stream_lowres)
         av_dict_set_int(&opts, "lowres", stream_lowres, 0);
@@ -1370,7 +1410,7 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
 
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-            //UE_LOG(LogVideoPlayer, Warning, TEXT("Coudn't open the hwaccel codec, trying a different one"));
+            UE_LOG(LogFFMPEGMedia, Warning, TEXT("Coudn't open the hwaccel codec, trying a different one"));
             codec = avcodec_find_decoder(avctx->codec_id);
             avctx->codec_id = codec->id;
             if (stream_lowres > av_codec_get_max_lowres(codec)) {
@@ -1378,6 +1418,10 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
                 stream_lowres = av_codec_get_max_lowres(codec);
             }
             av_codec_set_lowres(avctx, stream_lowres);
+            if ( thread_count > 0) {
+                avctx->thread_count = FFMAX(1, FFMIN(thread_count, 32));
+            }
+
             if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
                 avcodec_free_context(&avctx);
                 return ret;
@@ -1401,14 +1445,10 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         if ((ic->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !ic->iformat->read_seek) {
             auddec->set_time(audio_st->start_time, audio_st->time_base);
         }
-        if ((ret = auddec->start()) < 0) {
+        if ((ret = auddec->start([this](void * data) {return AudioThread();}, NULL)) < 0) {
             av_dict_free(&opts);
             return ret;
         }
-
-        LambdaRunnable::RunThreaded("AudioDecoderThread", [this]() {
-           AudioThread(); 
-        });
 
         ic->audio_codec = codec;
         break;
@@ -1416,14 +1456,10 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         video_st = ic->streams[stream_index];
         video_stream = stream_index;
         viddec->init(avctx, &videoq, &continue_read_thread);
-        if ((ret = viddec->start()) < 0) {
+        if ((ret = viddec->start([this](void * data) {return VideoThread();}, NULL)) < 0) {
             av_dict_free(&opts);
             return ret;
         }
-
-        LambdaRunnable::RunThreaded("VideoDecoderThread", [this]() {
-            VideoThread();
-        });
         queue_attachments_req = true;
         ic->video_codec = codec;
         break;
@@ -1431,13 +1467,10 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         subtitle_st = ic->streams[stream_index];
         subtitle_stream = stream_index;
         subdec->init(avctx, &subtitleq, &continue_read_thread);
-        if ((ret = subdec->start()) < 0) {
+        if ((ret = subdec->start([this](void * data) {return SubtitleThread();}, NULL)) < 0) {
             av_dict_free(&opts);
             return ret;
         }
-        LambdaRunnable::RunThreaded("SubtitleDecoderThread", [this]() {
-            SubtitleThread();
-        });
         ic->subtitle_codec = codec;
         break;
     default:
@@ -1784,7 +1817,17 @@ int FFFMPEGMediaTracks::ReadThread() {
     for (;;) {
         if (aborted)
             break;
+
+        if (current_streams < total_streams) {
+            wait_mutex.Lock();
+            continue_read_thread.waitTimeout(wait_mutex, 10);
+            wait_mutex.Unlock();
+            continue;
+        }
+
         paused = ( CurrentState == EMediaState::Paused || CurrentState == EMediaState::Stopped);
+
+        
 
         if (paused != last_paused) {
             last_paused = paused;
@@ -1829,6 +1872,7 @@ int FFFMPEGMediaTracks::ReadThread() {
             seek_req = false;
             queue_attachments_req = true;
             eof = 0;
+            
             if (CurrentState == EMediaState::Paused)
                 step_to_next_frame();
         }
@@ -1872,6 +1916,7 @@ int FFFMPEGMediaTracks::ReadThread() {
                 CurrentState = EMediaState::Stopped;
                 DeferredEvents.Enqueue(EMediaEvent::PlaybackEndReached);
                 DeferredEvents.Enqueue(EMediaEvent::PlaybackSuspended);
+                bPrerolled = false;
             }
         }
         ret = av_read_frame(ic, pkt);
@@ -2068,6 +2113,11 @@ int FFFMPEGMediaTracks::audio_decode_frame(FTimespan& Time, FTimespan& Duration)
         af->get_frame()->channel_layout : av_get_default_channel_layout(af->get_frame()->channels);
     wanted_nb_samples = synchronize_audio(af->get_frame()->nb_samples);
 
+    if (get_master_sync_type() == ESynchronizationType::AudioMaster) {
+        //CurrentTime = FTimespan::FromSeconds(af->get_pts());
+        CurrentTime = FTimespan::FromSeconds(audclk.get());
+    }
+
     if (af->get_frame()->format != srcAudio.Format ||
         dec_channel_layout != srcAudio.ChannelLayout ||
         af->get_frame()->sample_rate != srcAudio.SampleRate||
@@ -2221,7 +2271,7 @@ int FFFMPEGMediaTracks::DisplayThread() {
         if (remaining_time > 0.0)
             av_usleep((int64_t)(remaining_time * 1000000.0));
         remaining_time = REFRESH_RATE;
-        if ( CurrentState == EMediaState::Playing || force_refresh  ) {
+        if (bPrerolled && CurrentState == EMediaState::Playing || force_refresh  ) {
             VideoRefresh(&remaining_time);   
         }
     }
@@ -2234,13 +2284,15 @@ int FFFMPEGMediaTracks::AudioRenderThread() {
     
     int64_t startTime =  av_gettime_relative();
     while (audioRunning) {
-        RenderAudio();
-        int64_t endTime =  av_gettime_relative();
-        int64_t dif = endTime - startTime;
-        if ( dif < 30000) {
-            av_usleep(30000 - dif);
+        if ( bPrerolled) {
+            RenderAudio();
+            int64_t endTime =  av_gettime_relative();
+            int64_t dif = endTime - startTime;
+            if ( dif < 30000) {
+                av_usleep(30000 - dif);
+            }
+            startTime = endTime;
         }
-        startTime = endTime;
     }
     return 0;
 }
@@ -2267,8 +2319,12 @@ retry:
             /* dequeue the picture */
             lastvp = pictq.peek_last();
             vp = pictq.peek();
-            
-            CurrentTime = FTimespan::FromSeconds(vp->get_pts());
+            ESynchronizationType sync_type = get_master_sync_type();
+            if ( sync_type  == ESynchronizationType::VideoMaster) {
+                CurrentTime = FTimespan::FromSeconds(vidclk.get());
+            } else if (sync_type == ESynchronizationType::ExternalClock) {
+                CurrentTime = FTimespan::FromSeconds(extclk.get());
+            }
 
 
             if (vp->get_serial() != videoq.get_serial()) {
@@ -2292,6 +2348,7 @@ retry:
                 *remaining_time = FFMIN(frame_timer + delay - time, *remaining_time);
                 goto display;
             }
+
 
             frame_timer += delay;
             if (delay > 0 && time - frame_timer > AV_SYNC_THRESHOLD_MAX)
@@ -2413,6 +2470,11 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
         return -1;
 
     if ( got_picture ) {
+        if ( !bPrerolled) {
+            bPrerolled = true;
+            SetRate(CurrentRate);
+        }
+
         double dpts = NAN;
 
         if (frame->pts != AV_NOPTS_VALUE)
@@ -2425,7 +2487,7 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
             if (frame->pts != AV_NOPTS_VALUE) {
                 double diff = dpts - get_master_clock();
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
-                    /*diff - frame_last_filter_delay < 0 &&*/
+                    diff /*- frame_last_filter_delay*/ < 0 &&
                     viddec->get_pkt_serial() == vidclk.get_serial() &&
                     videoq.get_nb_packets()) {
                     frame_drops_early++;

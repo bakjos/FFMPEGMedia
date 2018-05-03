@@ -172,6 +172,12 @@ public:
 	 */
 	void Shutdown();
 
+    /**
+     *
+     *
+     */
+    void TickInput(FTimespan DeltaTime, FTimespan Timecode);
+
 public:
 
 	//~ IMediaSamples interface
@@ -367,8 +373,12 @@ private:
     /** The duration of the media. */
     FTimespan Duration;
 
+    FTimespan TargetTime;
+
     /** Should the video loop to the beginning at completion */
     bool ShouldLoop;
+
+    bool bPrerolled;
 
 
     /** FFMPEG methods */
@@ -498,6 +508,13 @@ private:
     double audio_diff_threshold;
     int audio_diff_avg_count;
     double audio_diff_cum; /* used for AV difference average computation */
+    int total_streams;
+    int current_streams;
+
+    //Testing counters
+    int numNonOverlaps;
+    int numIgnores;
+
 };
 
 
