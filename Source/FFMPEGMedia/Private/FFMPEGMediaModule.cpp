@@ -102,6 +102,10 @@ public:
         av_register_all();
         avformat_network_init();
         av_log_set_level(AV_LOG_INFO);
+        
+        UE_LOG(LogFFMPEGMedia, Display, TEXT("FFmpeg AVCodec version: %d.%d.%d"), LIBAVFORMAT_VERSION_MAJOR, LIBAVFORMAT_VERSION_MINOR, LIBAVFORMAT_VERSION_MICRO);
+        UE_LOG(LogFFMPEGMedia, Display, TEXT("FFmpeg license: %s"), UTF8_TO_TCHAR(avformat_license()));
+        
 
 		// register capture device support
 		auto MediaModule = FModuleManager::LoadModulePtr<IMediaModule>("Media");

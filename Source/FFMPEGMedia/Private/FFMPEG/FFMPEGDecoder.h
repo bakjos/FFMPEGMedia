@@ -4,7 +4,7 @@
 #include "CondWait.h"
 #include "FFMPEGPacketQueue.h"
 #include "FFMPEGFrameQueue.h"
-
+#include <thread>
 
 extern "C" {
 #include <libavcodec/avcodec.h>

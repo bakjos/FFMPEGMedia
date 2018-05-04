@@ -271,8 +271,8 @@ int FFFMPEGMediaPlayer::read_stream(void* opaque, uint8_t* buf, int buf_size) {
     FFFMPEGMediaPlayer* player = static_cast<FFFMPEGMediaPlayer*>(opaque);
     int64 Position =  player->CurrentArchive->Tell();
     int64 Size =  player->CurrentArchive->TotalSize();
-    ULONG BytesToRead = buf_size;
-    if (BytesToRead > (ULONG)Size)
+    int64 BytesToRead = buf_size;
+    if (BytesToRead > (int64)Size)
     {
         BytesToRead = Size;
     }
@@ -340,10 +340,13 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
     if (err < 0) {
         char errbuf[128];
         const char *errbuf_ptr = errbuf;
-
+#if PLATFORM_WINDOWS
         if (av_strerror(err, errbuf, sizeof(errbuf)) < 0)
             strerror_s(errbuf, 128, AVUNERROR(err));
-
+#else
+        if (av_strerror(err, errbuf, sizeof(errbuf)) < 0)
+            errbuf_ptr = strerror(AVUNERROR(err));
+#endif
         PlayerTasks.Enqueue([=]() {
             EventSink.ReceiveMediaEvent(EMediaEvent::MediaOpenFailed);
         });

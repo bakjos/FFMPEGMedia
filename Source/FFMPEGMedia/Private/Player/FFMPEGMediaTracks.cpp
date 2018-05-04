@@ -853,7 +853,7 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 	// deselect stream for old track
 	if (*SelectedTrack != INDEX_NONE)
 	{
-        const DWORD StreamIndex = (*Tracks)[*SelectedTrack].StreamIndex;
+        const int StreamIndex = (*Tracks)[*SelectedTrack].StreamIndex;
         StreamComponentClose(StreamIndex);
 
         UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks %p: Disabled stream %i"), this, StreamIndex);
@@ -867,7 +867,7 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 	// select stream for new track
 	if (TrackIndex != INDEX_NONE)
 	{
-		const DWORD StreamIndex = (*Tracks)[TrackIndex].StreamIndex;
+		const int StreamIndex = (*Tracks)[TrackIndex].StreamIndex;
         const auto Settings = GetDefault<UFFMPEGMediaSettings>();
 
         if (TrackType != EMediaTrackType::Audio || (TrackType == EMediaTrackType::Audio && !Settings->DisableAudio) ) {
@@ -1285,11 +1285,11 @@ const FFFMPEGMediaTracks::FFormat* FFFMPEGMediaTracks::GetVideoFormat(int32 Trac
 /* FFMPEGMediaTracks Implementation                                    */
 /************************************************************************/
 
-bool FFFMPEGMediaTracks::isHwAccel(const char* name) {
+bool FFFMPEGMediaTracks::isHwAccel(int codecId) {
     AVHWAccel* prev = av_hwaccel_next(NULL);
 
     while (prev) {
-        if (strcmp(prev->name, name) == 0) {
+        if (prev->id == codecId) {
             return true;
         }
         prev = av_hwaccel_next(prev);
@@ -1308,7 +1308,7 @@ AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
     }
     if (hwaccell) {
         for (AVCodec* codec : candidates) {
-            if (isHwAccel(codec->name)) {
+            if (isHwAccel(codec->id)) {
                 return codec;
             }
         }
@@ -1317,7 +1317,7 @@ AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
     if (prev == NULL && candidates.Num() > 0) {
         if (!hwaccell) {
             for (AVCodec* codec : candidates) {
-                if (!isHwAccel(codec->name)) {
+                if (!isHwAccel(codec->id)) {
                     return codec;
                 }
             }
@@ -1491,9 +1491,9 @@ void FFFMPEGMediaTracks::StreamComponentClose(int stream_index) {
 
     switch (codecpar->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
-        stopAudioRenderThread();
         auddec->abort(&sampq);
-
+        stopAudioRenderThread();
+    
         auddec->destroy();
         swr_free(&swr_ctx);
         swr_ctx = NULL;
@@ -1503,8 +1503,8 @@ void FFFMPEGMediaTracks::StreamComponentClose(int stream_index) {
         audio_clock = 0;
         break;
     case AVMEDIA_TYPE_VIDEO:
-        stopDisplayThread();
         viddec->abort(&pictq);
+        stopDisplayThread();
         viddec->destroy();
         SelectedVideoTrack = -1;
         break;
@@ -1535,16 +1535,16 @@ void FFFMPEGMediaTracks::StreamComponentClose(int stream_index) {
     }
 }
 
-void FFFMPEGMediaTracks::step_to_next_frame() {
+void FFFMPEGMediaTracks::StepToNextFrame() {
     if (CurrentState == EMediaState::Paused) {
         SetRate(1.0f);
-        stream_toggle_pause();
+        StreamTogglePause();
     }
 
     step = 1;
 }
 
-void FFFMPEGMediaTracks::stream_toggle_pause() {
+void FFFMPEGMediaTracks::StreamTogglePause() {
     if (CurrentState == EMediaState::Paused) {
         frame_timer += av_gettime_relative() / 1000000.0 - vidclk.get_last_updated();
         if (read_pause_return != AVERROR(ENOSYS)) {
@@ -1561,14 +1561,14 @@ void FFFMPEGMediaTracks::stream_toggle_pause() {
     extclk.set_paused(paused);
 }
 
-double FFFMPEGMediaTracks::compute_target_delay(double delay) {
+double FFFMPEGMediaTracks::ComputeTargetDelay(double delay) {
     double sync_threshold, diff = 0;
 
     /* update delay to follow master synchronisation source */
     if (get_master_sync_type() != ESynchronizationType::VideoMaster) {
         /* if video is slave, we try to correct big delays by
             duplicating or deleting a FFMPEGFrame */
-        diff = vidclk.get() - get_master_clock();
+        diff = vidclk.get() - GetMasterClock();
 
         /* skip or repeat frame. We take into account the
             delay to compute the threshold. I still don't know
@@ -1608,12 +1608,12 @@ ESynchronizationType FFFMPEGMediaTracks::get_master_sync_type() {
     return ESynchronizationType::ExternalClock;
 }
 
-void FFFMPEGMediaTracks::update_video_pts(double pts, int64_t pos, int serial) {
+void FFFMPEGMediaTracks::UpdateVideoPts(double pts, int64_t pos, int serial) {
     vidclk.set(pts, serial);
     extclk.sync_to_slave(&vidclk);
 }
 
-void FFFMPEGMediaTracks::check_external_clock_speed() {
+void FFFMPEGMediaTracks::CheckExternalClockSpeed() {
     if (video_stream >= 0 && videoq.get_nb_packets() <= EXTERNAL_CLOCK_MIN_FRAMES ||
         audio_stream >= 0 && audioq.get_nb_packets() <= EXTERNAL_CLOCK_MIN_FRAMES) {
         extclk.set_speed(FFMAX(EXTERNAL_CLOCK_SPEED_MIN, extclk.get_speed() - EXTERNAL_CLOCK_SPEED_STEP));
@@ -1629,7 +1629,7 @@ void FFFMPEGMediaTracks::check_external_clock_speed() {
     }
 }
 
-double FFFMPEGMediaTracks::get_master_clock() {
+double FFFMPEGMediaTracks::GetMasterClock() {
     double val;
 
     switch (get_master_sync_type()) {
@@ -1646,7 +1646,7 @@ double FFFMPEGMediaTracks::get_master_clock() {
     return val;
 }
 
-int FFFMPEGMediaTracks::upload_texture(FFMPEGFrame* vp, AVFrame *frame, struct SwsContext **img_convert_ctx) {
+int FFFMPEGMediaTracks::UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct SwsContext **img_convert_ctx) {
     int size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, frame->width, frame->height, 1);
 
     int bufSize = size + 1;
@@ -1702,7 +1702,7 @@ int FFFMPEGMediaTracks::upload_texture(FFMPEGFrame* vp, AVFrame *frame, struct S
     return ret;
 }
 
-void FFFMPEGMediaTracks::video_display () {
+void FFFMPEGMediaTracks::VideoDisplay () {
     if (video_st) {
             FFMPEGFrame *vp;
             FFMPEGFrame *sp = NULL;
@@ -1753,7 +1753,7 @@ void FFFMPEGMediaTracks::video_display () {
 
             if (!vp->get_uploaded()) {
                 vp->set_flip_v(vp->get_frame()->linesize[0] < 0);
-                if (upload_texture(vp, vp->get_frame(), &img_convert_ctx) < 0)
+                if (UploadTexture(vp, vp->get_frame(), &img_convert_ctx) < 0)
                     return;
                 vp->set_uploaded(1);
                 
@@ -1874,7 +1874,7 @@ int FFFMPEGMediaTracks::ReadThread() {
             eof = 0;
             
             if (CurrentState == EMediaState::Paused)
-                step_to_next_frame();
+                StepToNextFrame();
         }
 
 
@@ -1896,9 +1896,9 @@ int FFFMPEGMediaTracks::ReadThread() {
                 || (StreamHasEnoughPackets(audio_st, audio_stream, &audioq) &&
                     StreamHasEnoughPackets(video_st, video_stream, &videoq) &&
                     StreamHasEnoughPackets(subtitle_st, subtitle_stream, &subtitleq)))) {
-            /* wait 10 ms */
+            /* wait 20 ms */
             wait_mutex.Lock();
-            continue_read_thread.waitTimeout(wait_mutex, 10);
+            continue_read_thread.waitTimeout(wait_mutex, 20);
             wait_mutex.Unlock();
             continue;
         }
@@ -2040,7 +2040,7 @@ int FFFMPEGMediaTracks::SubtitleThread() {
     return 0;
 }
 
-int FFFMPEGMediaTracks::synchronize_audio( int nb_samples) {
+int FFFMPEGMediaTracks::SynchronizeAudio( int nb_samples) {
      int wanted_nb_samples = nb_samples;
 
         /* if not master, then we try to remove or add samples to correct the clock */
@@ -2048,7 +2048,7 @@ int FFFMPEGMediaTracks::synchronize_audio( int nb_samples) {
             double diff, avg_diff;
             int min_nb_samples, max_nb_samples;
 
-            diff = audclk.get() - get_master_clock();
+            diff = audclk.get() - GetMasterClock();
 
             if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD) {
                 audio_diff_cum = diff + audio_diff_avg_coef * audio_diff_cum;
@@ -2080,7 +2080,7 @@ int FFFMPEGMediaTracks::synchronize_audio( int nb_samples) {
         return wanted_nb_samples;
 }
 
-int FFFMPEGMediaTracks::audio_decode_frame(FTimespan& Time, FTimespan& Duration) {
+int FFFMPEGMediaTracks::AudioDecodeFrame(FTimespan& Time, FTimespan& Duration) {
     int data_size, resampled_data_size;
     int64_t dec_channel_layout;
     av_unused double audio_clock0;
@@ -2111,11 +2111,11 @@ int FFFMPEGMediaTracks::audio_decode_frame(FTimespan& Time, FTimespan& Duration)
     dec_channel_layout =
         (af->get_frame()->channel_layout && af->get_frame()->channels == av_get_channel_layout_nb_channels(af->get_frame()->channel_layout)) ?
         af->get_frame()->channel_layout : av_get_default_channel_layout(af->get_frame()->channels);
-    wanted_nb_samples = synchronize_audio(af->get_frame()->nb_samples);
+    wanted_nb_samples = SynchronizeAudio(af->get_frame()->nb_samples);
 
     if (get_master_sync_type() == ESynchronizationType::AudioMaster) {
-        //CurrentTime = FTimespan::FromSeconds(af->get_pts());
-        CurrentTime = FTimespan::FromSeconds(audclk.get());
+        CurrentTime = FTimespan::FromSeconds(af->get_pts());
+        //CurrentTime = FTimespan::FromSeconds(audclk.get());
     }
 
     if (af->get_frame()->format != srcAudio.Format ||
@@ -2202,7 +2202,7 @@ void FFFMPEGMediaTracks::RenderAudio() {
     FTimespan Time = 0;
     FTimespan Duration = 0;
 
-    audio_size = audio_decode_frame(Time, Duration);
+    audio_size = AudioDecodeFrame(Time, Duration);
     if (audio_size < 0) {
         /* if error, just output silence */
         audio_buf = NULL;
@@ -2288,11 +2288,12 @@ int FFFMPEGMediaTracks::AudioRenderThread() {
             RenderAudio();
             int64_t endTime =  av_gettime_relative();
             int64_t dif = endTime - startTime;
-            if ( dif < 30000) {
-                av_usleep(30000 - dif);
+            if ( dif < 33333) {
+                av_usleep(33333 - dif);
             }
             startTime = endTime;
         }
+        
     }
     return 0;
 }
@@ -2305,7 +2306,7 @@ void FFFMPEGMediaTracks::VideoRefresh(double *remaining_time) {
     FFMPEGFrame *sp, *sp2;
 
     if (CurrentState == EMediaState::Playing && get_master_sync_type() == ESynchronizationType::ExternalClock && realtime)
-        check_external_clock_speed();
+        CheckExternalClockSpeed();
 
       if (video_st) {
 retry:
@@ -2321,7 +2322,8 @@ retry:
             vp = pictq.peek();
             ESynchronizationType sync_type = get_master_sync_type();
             if ( sync_type  == ESynchronizationType::VideoMaster) {
-                CurrentTime = FTimespan::FromSeconds(vidclk.get());
+                //CurrentTime = FTimespan::FromSeconds(vidclk.get());
+                CurrentTime = FTimespan::FromSeconds(vp->get_pts());
             } else if (sync_type == ESynchronizationType::ExternalClock) {
                 CurrentTime = FTimespan::FromSeconds(extclk.get());
             }
@@ -2341,7 +2343,7 @@ retry:
            
             /* compute nominal last_duration */
             last_duration = lastvp->get_difference(vp, max_frame_duration);
-            delay = compute_target_delay(last_duration);
+            delay = ComputeTargetDelay(last_duration);
 
             time= av_gettime_relative()/1000000.0;
             if (time < frame_timer + delay) {
@@ -2356,7 +2358,7 @@ retry:
 
             pictq.lock();
             if (!isnan(vp->get_pts()))
-                update_video_pts(vp->get_pts(), vp->get_pos(), vp->get_serial());
+                UpdateVideoPts(vp->get_pts(), vp->get_pos(), vp->get_serial());
             pictq.unlock();
 
             if (pictq.get_nb_remaining() > 1) {
@@ -2407,12 +2409,12 @@ retry:
             force_refresh = true;
 
             if (step && CurrentState == EMediaState::Playing)
-                stream_toggle_pause();
+                StreamTogglePause();
         }
 display:
         /* display picture */
         if (force_refresh && pictq.get_rindex_shown())
-            video_display();
+            VideoDisplay();
     }
     force_refresh = false;
  /*   if (show_status) {
@@ -2485,7 +2487,7 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
 
         if ((Settings->AllowFrameDrop && get_master_sync_type() != ESynchronizationType::VideoMaster)) {
             if (frame->pts != AV_NOPTS_VALUE) {
-                double diff = dpts - get_master_clock();
+                double diff = dpts - GetMasterClock();
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
                     diff /*- frame_last_filter_delay*/ < 0 &&
                     viddec->get_pkt_serial() == vidclk.get_serial() &&

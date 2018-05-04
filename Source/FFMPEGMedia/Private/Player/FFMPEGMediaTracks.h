@@ -80,7 +80,7 @@ class FFFMPEGMediaTracks
 		FString Language;
 		FString Name;
 		bool Protected;
-		DWORD StreamIndex;
+		int StreamIndex;
 	};
 
 public:
@@ -382,7 +382,7 @@ private:
 
 
     /** FFMPEG methods */
-    static bool FFFMPEGMediaTracks::isHwAccel(const char* name);
+    static bool isHwAccel(int codecId);
     static AVCodec* FindDecoder(int codecId, bool hwaccell);
 
     void StreamSeek( int64_t pos, int64_t rel, int seek_by_bytes);
@@ -392,8 +392,8 @@ private:
     void StreamComponentClose(int stream_index);
 
     ESynchronizationType get_master_sync_type();
-    int upload_texture(FFMPEGFrame* vp, AVFrame *frame, struct SwsContext **img_convert_ctx);
-    int synchronize_audio( int nb_samples);
+    int UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct SwsContext **img_convert_ctx);
+    int SynchronizeAudio( int nb_samples);
 
 
     //video functions
@@ -406,7 +406,7 @@ private:
     int SubtitleThread();
     int VideoThread();
     int DisplayThread();
-    int audio_decode_frame (FTimespan& Time, FTimespan& Duration);
+    int AudioDecodeFrame (FTimespan& Time, FTimespan& Duration);
     void RenderAudio();
     int AudioRenderThread();
     void VideoRefresh(double *remaining_time);
@@ -417,14 +417,13 @@ private:
     void startAudioRenderThread();
     void stopAudioRenderThread();
 
-    void video_display ();
-    void step_to_next_frame();
-    void stream_toggle_pause();
-    double compute_target_delay(double delay);
-    void update_video_pts( double pts, int64_t pos, int serial);
-    void check_external_clock_speed();
-    double get_master_clock();
-
+    void VideoDisplay ();
+    void StepToNextFrame();
+    void StreamTogglePause();
+    double ComputeTargetDelay(double delay);
+    void UpdateVideoPts( double pts, int64_t pos, int serial);
+    void CheckExternalClockSpeed();
+    double GetMasterClock();
 
     struct SwsContext *img_convert_ctx;
     

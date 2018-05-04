@@ -75,6 +75,14 @@ public class FFMPEGMedia : ModuleRules
 			string LibrariesPath = Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "osx");
 
 			System.Console.WriteLine("... LibrariesPath -> " + LibrariesPath);
+            
+            string[] libs = {"libavcodec.57.dylib","libavdevice.57.dylib", "libavfilter.6.dylib", "libavformat.57.dylib", "libavutil.55.dylib", "libswresample.2.dylib", "libswscale.4.dylib"};
+            foreach (string lib in libs)
+            {
+                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
+                PublicDelayLoadDLLs.Add(Path.Combine(LibrariesPath, lib));
+                CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
+            }
 
 			/*PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avcodec.a"));
 			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avdevice.a"));
