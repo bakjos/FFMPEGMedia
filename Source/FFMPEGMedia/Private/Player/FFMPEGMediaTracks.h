@@ -2,6 +2,7 @@
 
 #pragma once
 
+
 #include "FFMPEGMediaSettings.h"
 #include "FFMPEGMediaPrivate.h"
 #include "FFMPEGFrameQueue.h"
@@ -27,10 +28,19 @@ class FFFMPEGMediaTextureSamplePool;
 
 struct AVFormatContext;
 struct AVCodec;
-
+struct AVBufferRef;
+struct AVCodecContext;
 class FFMPEGDecoder;
 
-
+/*
+enum HWAccelID {
+    HWACCEL_NONE = 0,
+    HWACCEL_AUTO,
+    HWACCEL_GENERIC,
+    HWACCEL_VIDEOTOOLBOX,
+    HWACCEL_CUVID,
+};
+*/
 
 
 /**
@@ -220,6 +230,13 @@ public:
     virtual bool SetLooping(bool Looping) override;
     virtual bool SetRate(float Rate) override;
 
+/*
+public:
+    static int cuvid_init(AVCodecContext *avctx);
+#if PLATFORM_MAC
+    static int videotoolbox_init(AVCodecContext *s);
+#endif*/
+
 protected:
 
 	/**
@@ -382,8 +399,15 @@ private:
 
 
     /** FFMPEG methods */
-    static bool isHwAccel(int codecId);
-    static AVCodec* FindDecoder(int codecId, bool hwaccell);
+    static bool isHwAccel(const AVCodec* codec);
+    static enum AVHWDeviceType FindBetterDeviceType(const AVCodec* codec, int& lastSelection);
+    static const AVCodec* FindDecoder(int codecId, bool hwaccell);
+    static enum AVPixelFormat get_format(AVCodecContext *s, const enum AVPixelFormat *pix_fmts);
+    static int get_buffer(AVCodecContext *s, AVFrame *frame, int flags);
+    static int hwaccel_retrieve_data_cb(AVCodecContext *avctx, AVFrame *input);
+
+   
+    
 
     void StreamSeek( int64_t pos, int64_t rel, int seek_by_bytes);
     int StreamHasEnoughPackets(AVStream *st, int stream_id, FFMPEGPacketQueue *queue);
@@ -438,6 +462,11 @@ private:
     AVStream *audio_st;
     AVStream *video_st;
     AVStream *subtitle_st;
+
+    AVCodecContext* video_ctx;
+
+    AVBufferRef* hw_device_ctx;
+    AVBufferRef* hw_frames_ctx;
 
     FFMPEGFrameQueue pictq;
     FFMPEGFrameQueue subpq;
@@ -514,6 +543,12 @@ private:
     int numNonOverlaps;
     int numIgnores;
 
+  
+    std::function<int(AVCodecContext *s, AVFrame *frame)> hwaccel_retrieve_data;
+
+    enum AVPixelFormat hwaccel_pix_fmt;
+    enum AVHWDeviceType hwaccel_device_type;
+    
 };
 
 

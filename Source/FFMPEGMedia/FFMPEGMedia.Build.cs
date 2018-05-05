@@ -59,7 +59,7 @@ public class FFMPEGMedia : ModuleRules
 			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "swresample.lib"));
 			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "swscale.lib"));
 
-			string[] dlls = {"avcodec-57.dll","avdevice-57.dll", "avfilter-6.dll", "avformat-57.dll", "avutil-55.dll", "swresample-2.dll", "swscale-4.dll"};
+			string[] dlls = {"avcodec-58.dll","avdevice-58.dll", "avfilter-7.dll", "avformat-58.dll", "avutil-56.dll", "swresample-3.dll", "swscale-5.dll"};
 
 			string BinariesPath = Path.Combine(Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "bin"), "vs"), PlatformString);
 			foreach (string dll in dlls)
@@ -76,7 +76,7 @@ public class FFMPEGMedia : ModuleRules
 
 			System.Console.WriteLine("... LibrariesPath -> " + LibrariesPath);
             
-            string[] libs = {"libavcodec.57.dylib","libavdevice.57.dylib", "libavfilter.6.dylib", "libavformat.57.dylib", "libavutil.55.dylib", "libswresample.2.dylib", "libswscale.4.dylib"};
+            string[] libs = {"libavcodec.58.dylib","libavdevice.58.dylib", "libavfilter.7.dylib", "libavformat.58.dylib", "libavutil.56.dylib", "libswresample.3.dylib", "libswscale.5.dylib"};
             foreach (string lib in libs)
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
@@ -84,13 +84,7 @@ public class FFMPEGMedia : ModuleRules
                 CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
             }
 
-			/*PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avcodec.a"));
-			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avdevice.a"));
-			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avfilter.a"));
-			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avformat.a"));
-			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avutil.a"));
-			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "swresample.a"));
-			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "swscale.a"));*/
+			
 
 		}
 

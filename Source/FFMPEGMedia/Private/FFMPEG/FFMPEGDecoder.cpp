@@ -59,7 +59,7 @@ int FFMPEGDecoder::decode_frame( AVFrame *frame, AVSubtitle *sub) {
                     if (ret >= 0) {
                         AVRational tb = { 1, frame->sample_rate };
                         if (frame->pts != AV_NOPTS_VALUE)
-                            frame->pts = av_rescale_q(frame->pts, av_codec_get_pkt_timebase(avctx), tb);
+                            frame->pts = av_rescale_q(frame->pts, avctx->pkt_timebase, tb);
                         else if (next_pts != AV_NOPTS_VALUE)
                             frame->pts = av_rescale_q(next_pts, next_pts_tb, tb);
                         if (frame->pts != AV_NOPTS_VALUE) {

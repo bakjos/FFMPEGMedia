@@ -51,10 +51,10 @@ public:
     UPROPERTY(config, EditAnywhere, Category = Media)
     bool SpeedUpTricks;
 
-    UPROPERTY(config, EditAnywhere, Category = Media, meta = (UIMin=0, UIMax = 32))
+    UPROPERTY(config, EditAnywhere, Category = Media, meta = (UIMin=0, UIMax = 16))
     int AudioThreads;
 
-    UPROPERTY(config, EditAnywhere, Category = Media, meta = (UIMin=0, UIMax = 32))
+    UPROPERTY(config, EditAnywhere, Category = Media, meta = (UIMin=0, UIMax = 16))
     int VideoThreads;
 
 	UPROPERTY(config, EditAnywhere, Category = Media)

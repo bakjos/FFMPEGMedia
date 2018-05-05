@@ -30,6 +30,7 @@ extern  "C" {
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/hwcontext.h"
 #include "libavutil/time.h"
 #include "libswscale/swscale.h"
 #include "libswresample/swresample.h"
@@ -81,6 +82,8 @@ extern  "C" {
 
 
 
+
+
 /* FFFMPEGMediaTracks structors
  *****************************************************************************/
 
@@ -112,9 +115,14 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
     , video_st(NULL)
     , subtitle_st(NULL)
     , swr_ctx(NULL)
+    , hw_device_ctx(NULL)
+    , hw_frames_ctx(NULL)
+    , hwaccel_pix_fmt(AV_PIX_FMT_NONE)
+    , hwaccel_device_type(AV_HWDEVICE_TYPE_NONE)
     , auddec (MakeShareable(new FFMPEGDecoder()))
     , viddec (MakeShareable(new FFMPEGDecoder()))
     , subdec (MakeShareable(new FFMPEGDecoder()))
+    , video_ctx (NULL)
     , seek_req(false)
     , seek_pos(0)
     , seek_rel(0)
@@ -358,6 +366,11 @@ void FFFMPEGMediaTracks::Shutdown()
     audioThread = nullptr;
     videoThread = nullptr;
     subtitleThread = nullptr;
+
+     /*hw_device_ctx(NULL)
+    , hw_frames_ctx(NULL)
+    , hwaccel_ctx(NULL)
+    , hwaccel_pix_fmt(AV_PIX_FMT_NONE)*/
     
 
 
@@ -1285,39 +1298,108 @@ const FFFMPEGMediaTracks::FFormat* FFFMPEGMediaTracks::GetVideoFormat(int32 Trac
 /* FFMPEGMediaTracks Implementation                                    */
 /************************************************************************/
 
-bool FFFMPEGMediaTracks::isHwAccel(int codecId) {
-    AVHWAccel* prev = av_hwaccel_next(NULL);
+bool FFFMPEGMediaTracks::isHwAccel(const AVCodec* codec) {
+    const AVCodecHWConfig *config;
+    enum AVHWDeviceType type;
 
-    while (prev) {
-        if (prev->id == codecId) {
-            return true;
-        }
-        prev = av_hwaccel_next(prev);
-    }
-    return false;
+     if (!avcodec_get_hw_config(codec, 0)) {
+         return false;
+     }
+     bool ret = false;
+     for (int i = 0; ; i++) {
+         config = avcodec_get_hw_config(codec, i);
+         if (!config)
+             break;
+
+         type = config->device_type;
+
+         if (!(config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX))
+             continue;
+
+        
+         const char* type_name = av_hwdevice_get_type_name(type);
+         UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Format found: %s"), UTF8_TO_TCHAR(type_name) );
+         ret = true;
+     }
+
+     return ret;
 }
 
-AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
-    AVCodec* prev = av_codec_next(NULL);
-    TArray<AVCodec*> candidates;
-    while (prev) {
-        if (prev->id == codecId && av_codec_is_decoder(prev)) {
-            candidates.Add(prev);
+AVHWDeviceType FFFMPEGMediaTracks::FindBetterDeviceType(const AVCodec* codec, int& lastSelection) {
+    const AVCodecHWConfig *config;
+    enum AVHWDeviceType type;
+    TArray<enum AVHWDeviceType> availableTypes;
+    for (int i = 0; ; i++) {
+        config = avcodec_get_hw_config(codec, i);
+        if (!config)
+            break;
+
+        type = config->device_type;
+
+        if (!(config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX))
+            continue;
+
+        availableTypes.Add(type);
+    }
+
+    if (availableTypes.Num() == 0 ) {
+        lastSelection = -1;
+        return AV_HWDEVICE_TYPE_NONE;
+    }
+
+
+    const enum AVHWDeviceType* possibleType =  availableTypes.FindByKey(AV_HWDEVICE_TYPE_CUDA);
+    if ( possibleType && (lastSelection < 1) ) {
+        lastSelection = 1;
+        return *possibleType;
+    }
+
+    possibleType = availableTypes.FindByKey(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
+    if (possibleType && (lastSelection < 2)) {
+        lastSelection = 2;
+        return *possibleType;
+    }
+
+    possibleType = availableTypes.FindByKey(AV_HWDEVICE_TYPE_OPENCL);
+    if (possibleType && (lastSelection < 3)) {
+        lastSelection = 3;
+        return *possibleType;
+    }
+
+    if ( lastSelection < 4) lastSelection = 4;
+    else lastSelection++;
+
+    if ( (lastSelection - 4) < availableTypes.Num() ) {
+        return availableTypes[lastSelection - 4];
+    }
+
+    lastSelection = -1;
+    return AV_HWDEVICE_TYPE_NONE;
+}
+
+const AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
+    void* iter = NULL;
+    
+    const AVCodec* codec = av_codec_iterate(&iter);
+    TArray<const AVCodec*> candidates;
+    while (codec) {
+        if (codec->id == codecId && av_codec_is_decoder(codec)) {
+            candidates.Add(codec);
         }
-        prev = av_codec_next(prev);
+        codec = av_codec_iterate(&iter);
     }
     if (hwaccell) {
-        for (AVCodec* codec : candidates) {
-            if (isHwAccel(codec->id)) {
+        for (const AVCodec* codec : candidates) {
+            if (isHwAccel(codec)) {
                 return codec;
             }
         }
     }
 
-    if (prev == NULL && candidates.Num() > 0) {
+    if (codec == NULL && candidates.Num() > 0) {
         if (!hwaccell) {
-            for (AVCodec* codec : candidates) {
-                if (!isHwAccel(codec->id)) {
+            for (const AVCodec* codec : candidates) {
+                if (!isHwAccel(codec)) {
                     return codec;
                 }
             }
@@ -1329,7 +1411,7 @@ AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
         return candidates[0];
     }
 
-    return prev;
+    return codec;
 }
 
 int FFFMPEGMediaTracks::StreamHasEnoughPackets(AVStream *st, int stream_id, FFMPEGPacketQueue *queue) {
@@ -1339,13 +1421,61 @@ int FFFMPEGMediaTracks::StreamHasEnoughPackets(AVStream *st, int stream_id, FFMP
         queue->get_nb_packets() > MIN_FRAMES && (!queue->get_duration() || av_q2d(st->time_base) * queue->get_duration() > 1.0);
 }
 
+int FFFMPEGMediaTracks::get_buffer(AVCodecContext *s, AVFrame *frame, int flags) {
+    FFFMPEGMediaTracks* ist = (FFFMPEGMediaTracks*)s->opaque;    
+    return avcodec_default_get_buffer2(s, frame, flags);
+}
+
+enum AVPixelFormat FFFMPEGMediaTracks::get_format(AVCodecContext *s, const enum AVPixelFormat *pix_fmts) {
+    const enum AVPixelFormat *p;
+    //int ret;
+    FFFMPEGMediaTracks* tracks = (FFFMPEGMediaTracks*)s->opaque;
+    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
+        const AVCodecHWConfig  *config = NULL;
+        int i;
+
+        if (!(desc->flags & AV_PIX_FMT_FLAG_HWACCEL))
+            break;
+
+        for (i = 0;; i++) {
+            config = avcodec_get_hw_config(s->codec, i);
+            if (!config)
+                break;
+            if (!(config->methods &
+                AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX))
+                continue;
+            if (config->pix_fmt == *p)
+                break;
+        }
+
+        if (config) {
+            if (config->device_type != tracks->hwaccel_device_type) {
+                // Different hwaccel offered, ignore.
+                continue;
+            }
+
+        } else {
+            continue;
+           
+        }
+
+      
+        tracks->hwaccel_pix_fmt = *p;
+        break;
+
+    }
+
+    return *p;
+}
+
 
 int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
 
     const auto Settings = GetDefault<UFFMPEGMediaSettings>();
 
     AVCodecContext *avctx;
-    AVCodec *codec;
+    const AVCodec *codec;
     const char *forced_codec_name = NULL;
     AVDictionary *opts = NULL;
 
@@ -1364,33 +1494,57 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         avcodec_free_context(&avctx);
         return ret;
     }
-    av_codec_set_pkt_timebase(avctx, ic->streams[stream_index]->time_base);
-
+    avctx->pkt_timebase = ic->streams[stream_index]->time_base;
     
+    avctx->opaque = this;
+    avctx->get_format = get_format;
+    avctx->get_buffer2 = get_buffer;
+    avctx->thread_safe_callbacks = 1;
 
     if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
         codec = FindDecoder(avctx->codec_id, true);
         if (!codec) {
             codec = avcodec_find_decoder(avctx->codec_id);
+        } else {
+            
+            AVBufferRef *device_ref = NULL;
+            int lastSelection = 0;
+            while ( lastSelection >= 0) {
+                enum AVHWDeviceType type = FindBetterDeviceType(codec, lastSelection);
+                ret = av_hwdevice_ctx_create(&device_ref, type, NULL, NULL, 0);
+                if (ret < 0) {
+                    hw_device_ctx = NULL;
+                    hwaccel_device_type = AV_HWDEVICE_TYPE_NONE;
+                    hwaccel_retrieve_data = nullptr;
+                }
+                else {
+                    hw_device_ctx = device_ref;
+                    avctx->hw_device_ctx = av_buffer_ref(device_ref);
+
+                    const char* type_name = av_hwdevice_get_type_name(type);
+                    UE_LOG(LogFFMPEGMedia, Display, TEXT("Using hardware context type: %s"), UTF8_TO_TCHAR(type_name));
+
+                    hwaccel_device_type = type;
+                    hwaccel_retrieve_data = hwaccel_retrieve_data_cb;
+                    
+                    break;
+                }
+            }
         }
     } else {
         codec = avcodec_find_decoder(avctx->codec_id);
     }
 
     avctx->codec_id = codec->id;
-    if (stream_lowres > av_codec_get_max_lowres(codec)) {
-        UE_LOG(LogFFMPEGMedia, Warning, TEXT("The maximum value for lowres supported by the decoder is %d"), av_codec_get_max_lowres(codec));
-        stream_lowres = av_codec_get_max_lowres(codec);
+    if (stream_lowres > codec->max_lowres) {
+        UE_LOG(LogFFMPEGMedia, Warning, TEXT("The maximum value for lowres supported by the decoder is %d"), codec->max_lowres);
+        stream_lowres = codec->max_lowres;
     }
-    av_codec_set_lowres(avctx, stream_lowres);
-
-    if (stream_lowres) avctx->flags |= CODEC_FLAG_EMU_EDGE;
+     avctx->lowres = stream_lowres;
 
     if (Settings->SpeedUpTricks)
         avctx->flags2 |= AV_CODEC_FLAG2_FAST;
 
-    if (codec->capabilities & AV_CODEC_CAP_DR1)
-        avctx->flags |= CODEC_FLAG_EMU_EDGE;
 
     int thread_count = 0;
     if ( avctx->codec_type == AVMEDIA_TYPE_VIDEO ) thread_count = Settings->VideoThreads;
@@ -1400,7 +1554,8 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         thread_count = av_cpu_count();
     }
 
-    avctx->thread_count = FFMAX(1, FFMIN(thread_count, 32));
+    thread_count = FFMAX(1, FFMIN(thread_count, 16));
+    avctx->thread_count = thread_count;
     av_dict_set(&opts, "threads", TCHAR_TO_UTF8(*FString::FromInt(thread_count)), 0);
 
     if (stream_lowres)
@@ -1413,13 +1568,13 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
             UE_LOG(LogFFMPEGMedia, Warning, TEXT("Coudn't open the hwaccel codec, trying a different one"));
             codec = avcodec_find_decoder(avctx->codec_id);
             avctx->codec_id = codec->id;
-            if (stream_lowres > av_codec_get_max_lowres(codec)) {
-                UE_LOG(LogFFMPEGMedia, Warning, TEXT("The maximum value for lowres supported by the decoder is %d"), av_codec_get_max_lowres(codec));
-                stream_lowres = av_codec_get_max_lowres(codec);
+            if (stream_lowres > codec->max_lowres) {
+                UE_LOG(LogFFMPEGMedia, Warning, TEXT("The maximum value for lowres supported by the decoder is %d"),  codec->max_lowres);
+                stream_lowres =  codec->max_lowres;
             }
-            av_codec_set_lowres(avctx, stream_lowres);
+            avctx->lowres= stream_lowres;
             if ( thread_count > 0) {
-                avctx->thread_count = FFMAX(1, FFMIN(thread_count, 32));
+                avctx->thread_count =thread_count;
             }
 
             if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
@@ -1449,8 +1604,6 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
             av_dict_free(&opts);
             return ret;
         }
-
-        ic->audio_codec = codec;
         break;
     case AVMEDIA_TYPE_VIDEO:
         video_st = ic->streams[stream_index];
@@ -1461,7 +1614,7 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
             return ret;
         }
         queue_attachments_req = true;
-        ic->video_codec = codec;
+        video_ctx = avctx;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
         subtitle_st = ic->streams[stream_index];
@@ -1471,7 +1624,6 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
             av_dict_free(&opts);
             return ret;
         }
-        ic->subtitle_codec = codec;
         break;
     default:
         break;
@@ -1505,8 +1657,19 @@ void FFFMPEGMediaTracks::StreamComponentClose(int stream_index) {
     case AVMEDIA_TYPE_VIDEO:
         viddec->abort(&pictq);
         stopDisplayThread();
+
+        video_ctx = NULL;
         viddec->destroy();
         SelectedVideoTrack = -1;
+
+        if ( hw_device_ctx ) {
+            av_buffer_unref(&hw_device_ctx); 
+        }
+       
+        hwaccel_retrieve_data = nullptr;
+        hwaccel_pix_fmt = AV_PIX_FMT_NONE;
+       
+
         break;
     case AVMEDIA_TYPE_SUBTITLE:
         subdec->abort(&subpq);
@@ -1845,7 +2008,7 @@ int FFFMPEGMediaTracks::ReadThread() {
 
             ret = avformat_seek_file(ic, -1, seek_min, seek_target, seek_max, seek_flags);
             if (ret < 0) {
-                UE_LOG(LogFFMPEGMedia, Error, TEXT("%s: error while seeking"), UTF8_TO_TCHAR(ic->filename));
+                UE_LOG(LogFFMPEGMedia, Error, TEXT("%s: error while seeking"), UTF8_TO_TCHAR(ic->url));
             } else {
                 if (SelectedAudioTrack  != INDEX_NONE) {
                     audioq.flush();
@@ -2477,6 +2640,14 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
             SetRate(CurrentRate);
         }
 
+        if (hwaccel_retrieve_data && frame->format == hwaccel_pix_fmt) {
+            int err = hwaccel_retrieve_data(video_ctx, frame);
+            if (err < 0) {
+                av_frame_unref(frame);
+                return -1;
+            }
+        }
+
         double dpts = NAN;
 
         if (frame->pts != AV_NOPTS_VALUE)
@@ -2539,5 +2710,50 @@ int FFFMPEGMediaTracks::VideoThread() {
     av_frame_free(&frame);
     return 0;
 }
+
+
+int FFFMPEGMediaTracks::hwaccel_retrieve_data_cb(AVCodecContext *avctx, AVFrame *input) {
+    FFFMPEGMediaTracks *ist = (FFFMPEGMediaTracks*)avctx->opaque;
+    AVFrame *output = NULL;
+    //enum AVPixelFormat output_format = ist->hwaccel_output_format;
+    enum AVPixelFormat output_format = AV_PIX_FMT_NONE;
+    int err;
+
+    if (input->format == output_format) {
+        // Nothing to do.
+        return 0;
+    }
+
+    output = av_frame_alloc();
+    if (!output)
+        return AVERROR(ENOMEM);
+
+    output->format = output_format;
+
+    err = av_hwframe_transfer_data(output, input, 0);
+    if (err < 0) {
+        av_log(avctx, AV_LOG_ERROR, "Failed to transfer data to "
+            "output frame: %d.\n", err);
+        goto fail;
+    }
+
+    err = av_frame_copy_props(output, input);
+    if (err < 0) {
+        av_frame_unref(output);
+        goto fail;
+    }
+
+    av_frame_unref(input);
+    av_frame_move_ref(input, output);
+    av_frame_free(&output);
+
+    return 0;
+
+fail:
+    av_frame_free(&output);
+    return err;
+}
+
+
 
 #undef LOCTEXT_NAMESPACE

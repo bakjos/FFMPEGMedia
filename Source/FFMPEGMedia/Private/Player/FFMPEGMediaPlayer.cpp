@@ -17,6 +17,8 @@ extern  "C" {
 }
 
 
+#define FF_INPUT_BUFFER_PADDING_SIZE 32
+
 /* FWmfVideoPlayer structors
  *****************************************************************************/
 
