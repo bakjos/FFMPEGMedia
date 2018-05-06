@@ -7,6 +7,7 @@
 
 
 #include "Containers/UnrealString.h"
+#include "Containers/Queue.h"
 #include "IMediaCache.h"
 #include "IMediaPlayer.h"
 #include "IMediaView.h"

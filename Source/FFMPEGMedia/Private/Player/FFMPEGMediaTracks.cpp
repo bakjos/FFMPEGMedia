@@ -2,13 +2,12 @@
 
 #include "FFMPEGMediaTracks.h"
 #include "FFMPEGMediaPrivate.h"
-#include "LambdaRunnable.h"
+#include "LambdaFunctionRunnable.h"
 #include "FFMPEGMediaSettings.h"
 
 #include "FFMPEGDecoder.h"
 #include "FFMPEGFrame.h"
 
-#include "IHeadMountedDisplayModule.h"
 #include "IMediaOptions.h"
 #include "MediaHelpers.h"
 #include "Misc/ScopeLock.h"
@@ -321,7 +320,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
     const auto Settings = GetDefault<UFFMPEGMediaSettings>();
     av_sync_type = Settings->SyncType;
 
-    readThread = LambdaRunnable::RunThreaded(TEXT("ReadThread"), [this] {
+    readThread = LambdaFunctionRunnable::RunThreaded(TEXT("ReadThread"), [this] {
         ReadThread();
     }); 
     
@@ -2400,7 +2399,7 @@ void FFFMPEGMediaTracks::RenderAudio() {
 void FFFMPEGMediaTracks::startDisplayThread() {
     stopDisplayThread();
     displayRunning = true;
-    displayThread = LambdaRunnable::RunThreaded("DisplayThread", [this](){
+    displayThread = LambdaFunctionRunnable::RunThreaded("DisplayThread", [this](){
        DisplayThread(); 
     });
 }
@@ -2415,7 +2414,7 @@ void FFFMPEGMediaTracks::stopDisplayThread() {
 void FFFMPEGMediaTracks::startAudioRenderThread() {
     stopDisplayThread();
     audioRunning = true;
-    audioRenderThread = LambdaRunnable::RunThreaded("AudioRenderThread", [this]() {
+    audioRenderThread = LambdaFunctionRunnable::RunThreaded("AudioRenderThread", [this]() {
         AudioRenderThread();
     });
 }
