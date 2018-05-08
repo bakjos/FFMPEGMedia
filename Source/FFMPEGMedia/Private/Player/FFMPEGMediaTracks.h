@@ -293,23 +293,6 @@ private:
 
 private:
 
-	/** Callback for handling media sampler pauses. */
-	//void HandleMediaSamplerClock(EWmfMediaSamplerClockEvent Event, EMediaTrackType TrackType);
-
-	/** Callback for handling new samples from the streams' media sample buffers. */
-	//void HandleMediaSamplerAudioSample(const uint8* Buffer, uint32 Size, FTimespan Duration, FTimespan Time);
-
-	/** Callback for handling new caption samples. */
-	//void HandleMediaSamplerCaptionSample(const uint8* Buffer, uint32 Size, FTimespan Duration, FTimespan Time);
-
-	/** Callback for handling new metadata samples. */
-	//void HandleMediaSamplerMetadataSample(const uint8* Buffer, uint32 Size, FTimespan Duration, FTimespan Time);
-
-	/** Callback for handling new video samples. */
-	//void HandleMediaSamplerVideoSample(const uint8* Buffer, uint32 Size, FTimespan Duration, FTimespan Time);
-
-private:
-
 	/** Audio sample object pool. */
 	FFFMPEGMediaAudioSamplePool* AudioSamplePool;
 
@@ -335,7 +318,7 @@ private:
 	FString SourceUrl;
 
 	/** The currently opened media. */
-    AVFormatContext* ic;
+    AVFormatContext* FormatContext;
 
 	/** Whether the media source has changed. */
 	bool MediaSourceChanged;
@@ -395,51 +378,89 @@ private:
     /** Should the video loop to the beginning at completion */
     bool ShouldLoop;
 
+
     bool bPrerolled;
 
 
     /** FFMPEG methods */
+    /** Check if a codec have hardware acceleration options */
     static bool isHwAccel(const AVCodec* codec);
+
+    /** Find the better accelerated device type for the given codec*/
     static enum AVHWDeviceType FindBetterDeviceType(const AVCodec* codec, int& lastSelection);
+
+    /** Find a decoder usiing the given AVCodecID*/
     static const AVCodec* FindDecoder(int codecId, bool hwaccell);
-    static enum AVPixelFormat get_format(AVCodecContext *s, const enum AVPixelFormat *pix_fmts);
-    static int get_buffer(AVCodecContext *s, AVFrame *frame, int flags);
-    static int hwaccel_retrieve_data_cb(AVCodecContext *avctx, AVFrame *input);
 
-   
-    
+    /** Callback for ffmpeg to return the right format when is hardware accelerated*/
+    static enum AVPixelFormat GetFormatCallback(AVCodecContext *s, const enum AVPixelFormat *pix_fmts);
 
+    /** Callback for ffmpeg to transfer the gpu data to the cpu when is harware accelerated*/
+    static int HWAccelRetrieveDataCallback(AVCodecContext *avctx, AVFrame *input);
+
+    /** Invoked to seek in the stream*/
     void StreamSeek( int64_t pos, int64_t rel, int seek_by_bytes);
+
+    /** Check if the stream buffer has enought callbacks*/
     int StreamHasEnoughPackets(AVStream *st, int stream_id, FFMPEGPacketQueue *queue);
 
+    /** Open the given stream using the stream_index*/
     int  StreamComponentOpen(int stream_index);
+
+    /** Close the given stream using the stream_index*/
     void StreamComponentClose(int stream_index);
 
-    ESynchronizationType get_master_sync_type();
+    /** Returns the current synchronization type*/
+    ESynchronizationType getMasterSyncType();
+
+    /** Transfer the obtained ffmpeg texture to the IMediaTexture */
     int UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct SwsContext **img_convert_ctx);
+
+    /** Waits for the audio to be in sync when the synchronization is not made through the audio clock */
     int SynchronizeAudio( int nb_samples);
 
-
-    //video functions
+    /** Decode a frame from the packet queue and extract the AVFrame*/
     int GetVideoFrame(AVFrame *frame);
 
-   
+
+    /** Function to run while is reading the file*/
     int  ReadThread();
     
+    /** Decode the audio frames from the packet queue*/
     int AudioThread();
+
+    /** Decode the subtitle frames from the packet queue*/
     int SubtitleThread();
+
+    /** Extract the picture queue */
     int VideoThread();
+
+    /** Thread to convert the video frames*/
     int DisplayThread();
+
+    /** Decode an audio frame and extract the current time and duration for each sample*/
     int AudioDecodeFrame (FTimespan& Time, FTimespan& Duration);
+
+    /** Convert the audio frame to be played by the media player*/
     void RenderAudio();
+    
+    /** Thread to convert the audio frames */
     int AudioRenderThread();
+
+    /** Refresh the media sample when is need it */
     void VideoRefresh(double *remaining_time);
 
-    void startDisplayThread();
-    void stopDisplayThread();
+    /** Starts the display thread*/
+    void StartDisplayThread();
 
-    void startAudioRenderThread();
-    void stopAudioRenderThread();
+    /** Stops the display thread*/
+    void StopDisplayThread();
+
+    /** Starts the audio render thread*/
+    void StartAudioRenderThread();
+
+    /** Stops the audio render thread*/
+    void StopAudioRenderThread();
 
     void VideoDisplay ();
     void StepToNextFrame();
@@ -449,7 +470,7 @@ private:
     void CheckExternalClockSpeed();
     double GetMasterClock();
 
-    struct SwsContext *img_convert_ctx;
+    struct SwsContext *imgConvertCtx;
     
     FRunnableThread* readThread;
     FRunnableThread* audioThread;
@@ -459,9 +480,9 @@ private:
     
     FRunnableThread* audioRenderThread;
 
-    AVStream *audio_st;
-    AVStream *video_st;
-    AVStream *subtitle_st;
+    AVStream *audioStream;
+    AVStream *videoStream;
+    AVStream *subTitleStream;
 
     AVCodecContext* video_ctx;
 
@@ -481,9 +502,9 @@ private:
     FFMPEGClock vidclk;
     FFMPEGClock extclk;
 
-    struct SwrContext *swr_ctx;
+    struct SwrContext *swrContext;
 
-    CondWait continue_read_thread;
+    CondWait continueReadCond;
 
 
     TSharedPtr<FFMPEGDecoder> auddec;
@@ -497,57 +518,53 @@ private:
     bool             step;
 
     //Seek options
-    bool             seek_req;
-    int64_t          seek_pos;
-    int64_t          seek_rel;
-    int              seek_flags;
-    bool             queue_attachments_req;
-    int              read_pause_return;
+    bool             seekReq;
+    int64_t          seekPos;
+    int64_t          seekRel;
+    int              seekFlags;
+    bool             queueAttachmentsReq;
+    int              readPauseReturn;
     
-    int              video_stream;
-    int              audio_stream;
-    int              subtitle_stream;
+    int              videoStreamIdx;
+    int              audioStreamIdx;
+    int              subtitleStreamIdx;
 
-    bool             force_refresh;
+    bool             forceRefresh;
 
-    int              frame_drops_late;
-    int              frame_drops_early;
+    int              frameDropsLate;
+    int              frameDropsEarly;
 
-    double           frame_timer;
-    double           max_frame_duration;
+    double           frameTimer;
+    double           maxFrameDuration;
 
     bool             realtime;
 
-    TArray<uint8>	dataBuffer;
+    TArray<uint8>	 dataBuffer;
 
-    ESynchronizationType    av_sync_type;
+    ESynchronizationType         sychronizationType;
 
     FFormat::AudioFormat         srcAudio;          
     FFormat::AudioFormat         targetAudio;          
 
-    uint8_t *audio_buf;
-    uint8_t *audio_buf1;
-    unsigned int audio_buf_size; /* in bytes */
-    unsigned int audio_buf1_size; 
-    int audio_clock_serial;
-    double audio_clock;
-    int64_t audio_callback_time;
-    double audio_diff_avg_coef;
-    double audio_diff_threshold;
-    int audio_diff_avg_count;
-    double audio_diff_cum; /* used for AV difference average computation */
-    int total_streams;
-    int current_streams;
+    uint8_t *audioBuf;
+    uint8_t *audioBuf1;
+    unsigned int audioBufSize; /* in bytes */
+    unsigned int audioBuf1Size; 
+    int audioClockSerial;
+    double audioClock;
+    int64_t audioCallbackTime;
+    double audioDiffAvgCoef;
+    double audioDiffThreshold;
+    int audioDiffAvgCount;
+    double audioDiffCum; /* used for AV difference average computation */
+    int totalStreams;
+    int currentStreams;
 
-    //Testing counters
-    int numNonOverlaps;
-    int numIgnores;
-
-  
+     
     std::function<int(AVCodecContext *s, AVFrame *frame)> hwaccel_retrieve_data;
 
-    enum AVPixelFormat hwaccel_pix_fmt;
-    enum AVHWDeviceType hwaccel_device_type;
+    enum AVPixelFormat hwAccelPixFmt;
+    enum AVHWDeviceType hwAccelDeviceType;
     
 };
 

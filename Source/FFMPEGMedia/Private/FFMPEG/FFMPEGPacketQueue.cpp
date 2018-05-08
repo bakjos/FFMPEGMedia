@@ -18,23 +18,23 @@ std::mutex  flush_pkt_queue_mutex;
 
 FFMPEGPacketQueue::FFMPEGPacketQueue()
 {
-    abort_request = 0;
+    
     first_pkt = NULL;
     last_pkt = NULL;
     nb_packets = 0;
     size = 0;
     duration = 0;
-    abort_request = 1;
+    abort_request = true;
     serial = 0;
 }
 
 
 FFMPEGPacketQueue::~FFMPEGPacketQueue()
 {
-     flush();
+     Flush();
 }
 
-AVPacket* FFMPEGPacketQueue::flush_pkt() {
+AVPacket* FFMPEGPacketQueue::FlushPkt() {
     if ( flush_pkt_queue == NULL) {
         flush_pkt_queue_mutex.lock();
         if ( flush_pkt_queue == NULL) {
@@ -47,29 +47,29 @@ AVPacket* FFMPEGPacketQueue::flush_pkt() {
     return flush_pkt_queue;
 }
 
-int FFMPEGPacketQueue::put(AVPacket *pkt) {
+int FFMPEGPacketQueue::Put(AVPacket *pkt) {
     int ret;
 
     mutex.Lock();
-    ret = put_private( pkt);
+    ret = PutPrivate( pkt);
     mutex.Unlock();
 
-    if (pkt != flush_pkt() && ret < 0)
+    if (pkt != FlushPkt() && ret < 0)
         av_packet_unref(pkt);
 
     return ret;
 }
 
-int FFMPEGPacketQueue::put_nullpacket(int stream_index) {
+int FFMPEGPacketQueue::PutNullPacket(int stream_index) {
     AVPacket pkt1, *pkt = &pkt1;
     av_init_packet(pkt);
     pkt->data = NULL;
     pkt->size = 0;
     pkt->stream_index = stream_index;
-    return put(pkt);
+    return Put(pkt);
 }
 
-int FFMPEGPacketQueue::put_private(AVPacket *pkt) {
+int FFMPEGPacketQueue::PutPrivate(AVPacket *pkt) {
     MyAVPacketList *pkt1;
 
     if (abort_request)
@@ -80,7 +80,7 @@ int FFMPEGPacketQueue::put_private(AVPacket *pkt) {
         return -1;
     pkt1->pkt = *pkt;
     pkt1->next = NULL;
-    if (pkt == flush_pkt())
+    if (pkt == FlushPkt())
         serial++;
     pkt1->serial = serial;
 
@@ -97,7 +97,7 @@ int FFMPEGPacketQueue::put_private(AVPacket *pkt) {
     return 0;
 }
 
-int  FFMPEGPacketQueue::get(AVPacket *pkt, int block, int *serial) {
+int  FFMPEGPacketQueue::Get(AVPacket *pkt, int block, int *serial) {
     MyAVPacketList *pkt1;
     int ret;
 
@@ -137,21 +137,21 @@ int  FFMPEGPacketQueue::get(AVPacket *pkt, int block, int *serial) {
 }
 
 
-void FFMPEGPacketQueue::abort() {
+void FFMPEGPacketQueue::Abort() {
     mutex.Lock();
-    abort_request = 1;
+    abort_request = true;
     cond.signal();
     mutex.Unlock();
 }
 
-void FFMPEGPacketQueue::start() {
+void FFMPEGPacketQueue::Start() {
     mutex.Lock();
-    abort_request = 0;
-    put_private(flush_pkt());
+    abort_request = false;
+    PutPrivate(FlushPkt());
     mutex.Unlock();
 }
 
-void FFMPEGPacketQueue::flush() {
+void FFMPEGPacketQueue::Flush() {
     MyAVPacketList *pkt, *pkt1;
 
     mutex.Lock();
@@ -168,31 +168,31 @@ void FFMPEGPacketQueue::flush() {
     mutex.Unlock();
 }
 
-int FFMPEGPacketQueue::put_flush() {
-    return put(flush_pkt());
+int FFMPEGPacketQueue::PutFlush() {
+    return Put(FlushPkt());
 }
 
-int FFMPEGPacketQueue::get_size() {
+int FFMPEGPacketQueue::GetSize() {
     return size;
 }
 
-int FFMPEGPacketQueue::get_serial() {
+int FFMPEGPacketQueue::GetSerial() {
     return serial;
 }
 
-int FFMPEGPacketQueue::get_abort_request() {
+bool FFMPEGPacketQueue::IsAbortRequest() {
     return abort_request;
 }
 
-int FFMPEGPacketQueue::get_nb_packets() {
+int FFMPEGPacketQueue::GetNumPackets() {
     return nb_packets;
 }
 
-int FFMPEGPacketQueue::get_duration() {
+int FFMPEGPacketQueue::GetDuration() {
     return duration;    
 }
 
-bool FFMPEGPacketQueue::is_flush_packet( void* data) {
+bool FFMPEGPacketQueue::IsFlushPacket( void* data) {
     if ( flush_pkt_queue != NULL) {
         return flush_pkt_queue->data == data;
     }

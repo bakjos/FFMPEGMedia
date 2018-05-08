@@ -17,19 +17,19 @@ public:
     FFMPEGDecoder();
     ~FFMPEGDecoder();
 
-    void init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond);
-    int decode_frame( AVFrame *frame, AVSubtitle *sub);
-    void set_decoder_reorder_pts ( int pts );
-    void abort(FFMPEGFrameQueue* fq);
-    void destroy();
-    int start(std::function<int (void *)> thread_func, void *arg );
+    void Init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond);
+    int DecodeFrame( AVFrame *frame, AVSubtitle *sub);
+    void SetDecoderReorderPts ( int pts );
+    void Abort(FFMPEGFrameQueue* fq);
+    void Destroy();
+    int Start(std::function<int (void *)> thread_func, void *arg );
 
-    AVCodecContext* get_avctx();
-    int get_pkt_serial();
-    int get_finished();
+    AVCodecContext* GetAvctx();
+    int GetPktSerial();
+    int GetFinished();
     
-    void set_time ( int64_t start_pts, AVRational  start_pts_tb);
-    void set_finished ( int finished );
+    void SetTime ( int64_t start_pts, AVRational  start_pts_tb);
+    void SetFinished ( int finished );
 
 private:
     int decoder_reorder_pts;
@@ -38,7 +38,7 @@ private:
     AVCodecContext *avctx;
     int pkt_serial;
     int finished;
-    int packet_pending;
+    bool packet_pending;
     CondWait *empty_queue_cond;
     int64_t start_pts;
     AVRational start_pts_tb;

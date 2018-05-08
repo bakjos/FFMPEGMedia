@@ -13,33 +13,32 @@ public:
     FFMPEGPacketQueue();
     ~FFMPEGPacketQueue();
 
-    int get(AVPacket *pkt, int block, int *serial);
-    int put(AVPacket *pkt);
-    int put_flush();
-    int put_nullpacket(int stream_index);
-    void start();
-    void abort();
-    void flush();
-    int get_size();
-    int get_abort_request();
-    int get_serial();
-    int get_nb_packets();
-    int get_duration();
-    static bool is_flush_packet( void* data);
+    int Get(AVPacket *pkt, int block, int *serial);
+    int Put(AVPacket *pkt);
+    int PutFlush();
+    int PutNullPacket(int stream_index);
+    void Start();
+    void Abort();
+    void Flush();
+    int GetSize();
+    bool IsAbortRequest();
+    int GetSerial();
+    int GetNumPackets();
+    int GetDuration();
+    static bool IsFlushPacket( void* data);
 
 protected:
 
-    AVPacket* flush_pkt();
+    AVPacket* FlushPkt();
+    int PutPrivate(AVPacket *pkt);
 
     static AVPacket* flush_pkt_queue;
-
-    int put_private(AVPacket *pkt);
 
     MyAVPacketList *first_pkt, *last_pkt;
     int nb_packets;
     int size;
     int64_t duration;
-    int abort_request;
+    bool abort_request;
     int serial;
     
     FCriticalSection mutex;

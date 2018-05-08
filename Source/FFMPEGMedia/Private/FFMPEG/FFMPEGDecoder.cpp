@@ -7,7 +7,7 @@ FFMPEGDecoder::FFMPEGDecoder() {
     avctx = NULL;
     pkt_serial = -1;
     finished = 0;
-    packet_pending = 0;
+    packet_pending = false;
     empty_queue_cond = NULL;
     start_pts = 0;
     start_pts_tb = {0,0};
@@ -22,7 +22,7 @@ FFMPEGDecoder::~FFMPEGDecoder()
 {
 }
 
-void FFMPEGDecoder::init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond) {
+void FFMPEGDecoder::Init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond) {
     this->avctx = avctx;
     this->queue = queue;
     this->empty_queue_cond = empty_queue_cond;
@@ -30,15 +30,15 @@ void FFMPEGDecoder::init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWa
     this->pkt_serial = -1;
 }
 
-int FFMPEGDecoder::decode_frame( AVFrame *frame, AVSubtitle *sub) {
+int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
     int ret = AVERROR(EAGAIN);
 
     for (;;) {
         AVPacket pkt;
 
-        if (queue->get_serial() == pkt_serial) {
+        if (queue->GetSerial() == pkt_serial) {
             do {
-                if (queue->get_abort_request())
+                if (queue->IsAbortRequest())
                     return -1;
 
                 switch (avctx->codec_type) {
@@ -79,19 +79,19 @@ int FFMPEGDecoder::decode_frame( AVFrame *frame, AVSubtitle *sub) {
         }
 
         do {
-            if (queue->get_nb_packets() == 0)
+            if (queue->GetNumPackets() == 0)
                 empty_queue_cond->signal();
             if (packet_pending) {
                 av_packet_move_ref(&pkt, &pkt);
-                packet_pending = 0;
+                packet_pending = false;
             }
             else {
-                if (queue->get(&pkt, 1, &pkt_serial) < 0)
+                if (queue->Get(&pkt, 1, &pkt_serial) < 0)
                     return -1;
             }
-        } while (queue->get_serial() != pkt_serial);
+        } while (queue->GetSerial() != pkt_serial);
 
-        if (FFMPEGPacketQueue::is_flush_packet(pkt.data)) {
+        if (FFMPEGPacketQueue::IsFlushPacket(pkt.data)) {
             avcodec_flush_buffers(avctx);
             finished = 0;
             next_pts = start_pts;
@@ -126,18 +126,18 @@ int FFMPEGDecoder::decode_frame( AVFrame *frame, AVSubtitle *sub) {
     return ret;
 }
 
-void FFMPEGDecoder::set_decoder_reorder_pts ( int pts ) {
+void FFMPEGDecoder::SetDecoderReorderPts ( int pts ) {
     decoder_reorder_pts = pts;
 }
 
-void  FFMPEGDecoder::destroy() {    
+void  FFMPEGDecoder::Destroy() {    
     av_packet_unref(&pkt);
     avcodec_free_context(&avctx);
 }
 
-void FFMPEGDecoder::abort(FFMPEGFrameQueue* fq) {
-    queue->abort();
-    fq->signal();
+void FFMPEGDecoder::Abort(FFMPEGFrameQueue* fq) {
+    queue->Abort();
+    fq->Signal();
 
     try {
         if (decoder_tid->joinable()) {
@@ -149,11 +149,11 @@ void FFMPEGDecoder::abort(FFMPEGFrameQueue* fq) {
 
     delete decoder_tid;
 
-    queue->flush();
+    queue->Flush();
 }
 
-int FFMPEGDecoder::start(std::function<int (void *)> thread_func, void *arg ) {
-    queue->start();
+int FFMPEGDecoder::Start(std::function<int (void *)> thread_func, void *arg ) {
+    queue->Start();
 
     std::thread cpp_thread(thread_func, arg);
     decoder_tid = new std::thread(std::move(cpp_thread));
@@ -175,24 +175,24 @@ int FFMPEGDecoder::start(std::function<int (void *)> thread_func, void *arg ) {
     return 0;
 }
 
-AVCodecContext*  FFMPEGDecoder::get_avctx() {
+AVCodecContext*  FFMPEGDecoder::GetAvctx() {
     return avctx;
 }
 
-int  FFMPEGDecoder::get_pkt_serial() {
+int  FFMPEGDecoder::GetPktSerial() {
     return pkt_serial;
 }
 
-int  FFMPEGDecoder::get_finished() {
+int  FFMPEGDecoder::GetFinished() {
     return finished;
 }
 
-void  FFMPEGDecoder::set_time ( int64_t start_pts, AVRational  start_pts_tb) {
+void  FFMPEGDecoder::SetTime ( int64_t start_pts, AVRational  start_pts_tb) {
     this->start_pts = start_pts;
     this->start_pts_tb = start_pts_tb;
 }
 
-void  FFMPEGDecoder::set_finished ( int finished ) {
+void  FFMPEGDecoder::SetFinished ( int finished ) {
     this->finished = finished;
 }
 

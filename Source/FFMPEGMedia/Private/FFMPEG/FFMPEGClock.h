@@ -8,19 +8,19 @@ public:
     FFMPEGClock();
     ~FFMPEGClock();
 
-    void init(FFMPEGPacketQueue* queue);
-    void init(FFMPEGClock* clock);
-    double get();
-    void set (double pts, int serial);
-    void set_at( double pts, int serial, double time);
-    void set_speed(double speed);
-    void set_paused(int paused);
-    double get_pts();
-    int get_serial();
-    double get_speed();
-    double get_last_updated();
+    void Init(FFMPEGPacketQueue* queue);
+    void Init(FFMPEGClock* clock);
+    double Get();
+    void Set (double pts, int serial);
+    void SetAt( double pts, int serial, double time);
+    void SetSpeed(double speed);
+    void SetPaused(bool paused);
+    double GetPts();
+    int GetSerial();
+    double GetSpeed();
+    double GetLastUpdated();
 
-    void sync_to_slave(FFMPEGClock *slave);
+    void SyncToSlave(FFMPEGClock *slave);
 private:
 
     double pts;           /* clock base */
@@ -28,7 +28,7 @@ private:
     double last_updated;
     double speed;
     int serial;           /* clock is based on a packet with this serial */
-    int paused;
+    bool paused;
 
     int* queue_serial;
 

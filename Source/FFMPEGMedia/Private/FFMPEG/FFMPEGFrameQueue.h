@@ -21,28 +21,28 @@ public:
     FFMPEGFrameQueue();
     ~FFMPEGFrameQueue();
 
-    int init( FFMPEGPacketQueue *pktq, int max_size, int keep_last);
-    void destroy();
-    void signal();
+    int Init( FFMPEGPacketQueue *pktq, int max_size, int keep_last);
+    void Destroy();
+    void Signal();
 
 
-    int queue_picture( AVFrame *src_frame, double pts, double duration, int64_t pos, int serial);
+    int QueuePicture( AVFrame *src_frame, double pts, double duration, int64_t pos, int serial);
 
-    FFMPEGFrame *peek();
-    FFMPEGFrame *peek_next();
-    FFMPEGFrame *peek_last();
-    FFMPEGFrame *peek_writable();
-    FFMPEGFrame *peek_readable();
-    void push();
-    void next();
+    FFMPEGFrame *Peek();
+    FFMPEGFrame *PeekNext();
+    FFMPEGFrame *PeekLast();
+    FFMPEGFrame *PeekWritable();
+    FFMPEGFrame *PeekReadable();
+    void Push();
+    void Next();
     
 
-    void lock();
-    void unlock();
+    void Lock();
+    void Unlock();
 
-    int64_t get_queue_last_pos();
-    int get_nb_remaining();
-    int get_rindex_shown();
+    int64_t GetQueueLastPos();
+    int GetNumRemaining();
+    int GetIndexShown();
 
 private:
     

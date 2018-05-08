@@ -102,7 +102,7 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
     , CurrentRate(0.0f)
     , ShouldLoop(false)
     , bPrerolled(false)
-    , ic(NULL)
+    , FormatContext(NULL)
     , aborted(false)
     , displayRunning(false)
     , readThread (nullptr)
@@ -110,50 +110,48 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
     , videoThread (nullptr)
     , displayThread (nullptr)
     , subtitleThread(nullptr)
-    , audio_st(NULL)
-    , video_st(NULL)
-    , subtitle_st(NULL)
-    , swr_ctx(NULL)
+    , audioStream(NULL)
+    , videoStream(NULL)
+    , subTitleStream(NULL)
+    , swrContext(NULL)
     , hw_device_ctx(NULL)
     , hw_frames_ctx(NULL)
-    , hwaccel_pix_fmt(AV_PIX_FMT_NONE)
-    , hwaccel_device_type(AV_HWDEVICE_TYPE_NONE)
+    , hwAccelPixFmt(AV_PIX_FMT_NONE)
+    , hwAccelDeviceType(AV_HWDEVICE_TYPE_NONE)
     , auddec (MakeShareable(new FFMPEGDecoder()))
     , viddec (MakeShareable(new FFMPEGDecoder()))
     , subdec (MakeShareable(new FFMPEGDecoder()))
     , video_ctx (NULL)
-    , seek_req(false)
-    , seek_pos(0)
-    , seek_rel(0)
-    , seek_flags(0)
-    , queue_attachments_req(false)
-    , video_stream(-1)
-    , audio_stream(-1)
-    , subtitle_stream(-1)
-    , current_streams(0)
-    , total_streams(0)
-    , force_refresh(false)
-    , frame_drops_late(0)
-    , frame_drops_early(0)
-    , frame_timer(0.0)
+    , seekReq(false)
+    , seekPos(0)
+    , seekRel(0)
+    , seekFlags(0)
+    , queueAttachmentsReq(false)
+    , videoStreamIdx(-1)
+    , audioStreamIdx(-1)
+    , subtitleStreamIdx(-1)
+    , currentStreams(0)
+    , totalStreams(0)
+    , forceRefresh(false)
+    , frameDropsLate(0)
+    , frameDropsEarly(0)
+    , frameTimer(0.0)
     , step(false)
     , realtime(false)
-    , max_frame_duration(0.0)
-    , img_convert_ctx(NULL)
-    , audio_buf(NULL)
-    , audio_buf1(NULL)
-    , audio_buf_size(0)
-    , audio_buf1_size(0)
-    , audio_callback_time(0)
-    , audio_clock(0)
-    , audio_clock_serial(0)
-    , audio_diff_avg_coef(0)
-    , audio_diff_threshold(0)
-    , audio_diff_avg_count(0)
-    , audio_diff_cum(0) {
+    , maxFrameDuration(0.0)
+    , imgConvertCtx(NULL)
+    , audioBuf(NULL)
+    , audioBuf1(NULL)
+    , audioBufSize(0)
+    , audioBuf1Size(0)
+    , audioCallbackTime(0)
+    , audioClock(0)
+    , audioClockSerial(0)
+    , audioDiffAvgCoef(0)
+    , audioDiffThreshold(0)
+    , audioDiffAvgCount(0)
+    , audioDiffCum(0) {
     
-    numNonOverlaps = 0;
-    numIgnores = 0;
 }
 
 
@@ -257,30 +255,30 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
 	}
 
 
-    if (pictq.init(&videoq, VIDEO_PICTURE_QUEUE_SIZE, 1) < 0) {
+    if (pictq.Init(&videoq, VIDEO_PICTURE_QUEUE_SIZE, 1) < 0) {
         Shutdown();
         CurrentState = EMediaState::Error;
         return ;
     }
 
-    if (subpq.init(&subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0) {
+    if (subpq.Init(&subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0) {
         Shutdown();
         CurrentState = EMediaState::Error;
         return;
     }
 
-    if (sampq.init(&audioq, SAMPLE_QUEUE_SIZE, 1) < 0) {
+    if (sampq.Init(&audioq, SAMPLE_QUEUE_SIZE, 1) < 0) {
         Shutdown();
         CurrentState = EMediaState::Error;
         return;
     }
 
-    vidclk.init(&videoq);
-    audclk.init(&audioq);
-    extclk.init(&extclk);
+    vidclk.Init(&videoq);
+    audclk.Init(&audioq);
+    extclk.Init(&extclk);
     
-    this->ic = ic;
-    audio_clock_serial = -1;
+    this->FormatContext = ic;
+    audioClockSerial = -1;
 
     CurrentState = EMediaState::Preparing;
 
@@ -293,7 +291,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
         bool streamAdded = AddStreamToTracks(i, false, Info);
         AllStreamsAdded &= streamAdded;
         if ( streamAdded) {
-            total_streams++;
+            totalStreams++;
         }
         enum AVMediaType type = st->codecpar->codec_type;
         st->discard = AVDISCARD_ALL;
@@ -308,7 +306,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
 
     Duration = duration * 10;
 
-    max_frame_duration = (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
+    maxFrameDuration = (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
 
     SetRate(0.0f);
 
@@ -318,7 +316,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
     aborted = false;
 
     const auto Settings = GetDefault<UFFMPEGMediaSettings>();
-    av_sync_type = Settings->SyncType;
+    sychronizationType = Settings->SyncType;
 
     readThread = LambdaFunctionRunnable::RunThreaded(TEXT("ReadThread"), [this] {
         ReadThread();
@@ -342,23 +340,23 @@ void FFFMPEGMediaTracks::ReInitialize()
 
 void FFFMPEGMediaTracks::Shutdown()
 {
-	UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks: %p: Shutting down (context %p)"), this, ic);
+	UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks: %p: Shutting down (context %p)"), this, FormatContext);
 
     aborted = true;
 
-    max_frame_duration = 0.0;
+    maxFrameDuration = 0.0;
 
     /* close each stream */
     if (SelectedAudioTrack >= 0)
-        StreamComponentClose(audio_stream);
+        StreamComponentClose(audioStreamIdx);
     if (SelectedCaptionTrack >= 0)
-        StreamComponentClose(subtitle_stream);
+        StreamComponentClose(subtitleStreamIdx);
     if (SelectedVideoTrack >= 0)
-        StreamComponentClose(video_stream);
+        StreamComponentClose(videoStreamIdx);
 
-    video_stream = -1;
-    audio_stream = -1;
-    subtitle_stream = -1;
+    videoStreamIdx = -1;
+    audioStreamIdx = -1;
+    subtitleStreamIdx = -1;
 
     
     readThread = nullptr;
@@ -369,7 +367,7 @@ void FFFMPEGMediaTracks::Shutdown()
      /*hw_device_ctx(NULL)
     , hw_frames_ctx(NULL)
     , hwaccel_ctx(NULL)
-    , hwaccel_pix_fmt(AV_PIX_FMT_NONE)*/
+    , hwAccelPixFmt(AV_PIX_FMT_NONE)*/
     
 
 
@@ -383,8 +381,8 @@ void FFFMPEGMediaTracks::Shutdown()
 	SelectedMetadataTrack = INDEX_NONE;
 	SelectedVideoTrack = INDEX_NONE;
 
-    frame_drops_late = 0;
-    frame_drops_early = 0;
+    frameDropsLate = 0;
+    frameDropsEarly = 0;
 
 	AudioTracks.Empty();
 	MetadataTracks.Empty();
@@ -396,8 +394,8 @@ void FFFMPEGMediaTracks::Shutdown()
 	MediaSourceChanged = false;
 	SelectionChanged = false;
 
-    current_streams = 0;
-    total_streams = 0;
+    currentStreams = 0;
+    totalStreams = 0;
 }
 
 void FFFMPEGMediaTracks::TickInput(FTimespan DeltaTime, FTimespan Timecode) {
@@ -430,6 +428,7 @@ bool FFFMPEGMediaTracks::FetchAudio(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
+        AudioSampleQueue.RequestFlush();
 		return false;
 	}
 
@@ -460,6 +459,7 @@ bool FFFMPEGMediaTracks::FetchCaption(TRange<FTimespan> TimeRange, TSharedPtr<IM
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
+        CaptionSampleQueue.RequestFlush();
 		return false;
 	}
 
@@ -507,7 +507,6 @@ bool FFFMPEGMediaTracks::FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 
 	if (!VideoSampleQueue.Peek(Sample))
 	{
-        numIgnores++;
 		return false;
 	}
 
@@ -515,8 +514,8 @@ bool FFFMPEGMediaTracks::FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
-        numNonOverlaps++;
-		return false;
+        VideoSampleQueue.RequestFlush();
+     	return false;
 	}
 
 	if (!VideoSampleQueue.Dequeue(Sample))
@@ -811,7 +810,7 @@ bool FFFMPEGMediaTracks::GetVideoTrackFormat(int32 TrackIndex, int32 FormatIndex
 
 bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex)
 {
-	if (!ic)
+	if (!FormatContext)
 	{
 		return false; // not initialized
 	}
@@ -872,7 +871,7 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 			
 		*SelectedTrack = INDEX_NONE;
 		SelectionChanged = true;
-        current_streams--;
+        currentStreams--;
        
 	}
 
@@ -884,7 +883,7 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 
         if (TrackType != EMediaTrackType::Audio || (TrackType == EMediaTrackType::Audio && !Settings->DisableAudio) ) {
             StreamComponentOpen(StreamIndex);
-            current_streams++;
+            currentStreams++;
 		    UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks %p: Enabled stream %i"), this, StreamIndex);
         }
 
@@ -892,19 +891,19 @@ bool FFFMPEGMediaTracks::SelectTrack(EMediaTrackType TrackType, int32 TrackIndex
 		SelectionChanged = true;
 
         if (TrackType == EMediaTrackType::Video) {
-            startDisplayThread();
+            StartDisplayThread();
         }
         else if (TrackType == EMediaTrackType::Audio) {
 
             srcAudio =  (*Tracks)[TrackIndex].Format.Audio;
             targetAudio = srcAudio;
 
-            audio_diff_avg_coef  = exp(log(0.01) / AUDIO_DIFF_AVG_NB);
-            audio_diff_avg_count = 0;
+            audioDiffAvgCoef  = exp(log(0.01) / AUDIO_DIFF_AVG_NB);
+            audioDiffAvgCount = 0;
         
-            audio_diff_threshold = (double)(targetAudio.HardwareSize) / targetAudio.BytesPerSec;
+            audioDiffThreshold = (double)(targetAudio.HardwareSize) / targetAudio.BytesPerSec;
 
-            startAudioRenderThread();
+            StartAudioRenderThread();
         }
 	}
 
@@ -1081,7 +1080,7 @@ bool FFFMPEGMediaTracks::AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevic
 	OutInfo += FString::Printf(TEXT("Stream %i\n"), StreamIndex);
 
 
-    AVStream* StreamDescriptor = ic->streams[StreamIndex];
+    AVStream* StreamDescriptor = FormatContext->streams[StreamIndex];
     AVCodecParameters* CodecParams = StreamDescriptor->codecpar;
     AVMediaType MediaType = CodecParams->codec_type;
     
@@ -1131,8 +1130,8 @@ bool FFFMPEGMediaTracks::AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevic
     const FString TypeName =  avcodec_get_name(CodecParams->codec_id);
     OutInfo += FString::Printf(TEXT("\t\tCodec: %s\n"), *TypeName);
 
-    if ( ic->metadata ) {
-        AVDictionaryEntry *t = av_dict_get(ic->metadata, "language", NULL, 0);
+    if ( FormatContext->metadata ) {
+        AVDictionaryEntry *t = av_dict_get(FormatContext->metadata, "language", NULL, 0);
         if ( t ) {
             Track->Language = t->value;    
         } 
@@ -1415,17 +1414,13 @@ const AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
 
 int FFFMPEGMediaTracks::StreamHasEnoughPackets(AVStream *st, int stream_id, FFMPEGPacketQueue *queue) {
     return stream_id < 0 ||
-        queue->get_abort_request() ||
+        queue->IsAbortRequest() ||
         (st->disposition & AV_DISPOSITION_ATTACHED_PIC) ||
-        queue->get_nb_packets() > MIN_FRAMES && (!queue->get_duration() || av_q2d(st->time_base) * queue->get_duration() > 1.0);
+        queue->GetNumPackets() > MIN_FRAMES && (!queue->GetDuration() || av_q2d(st->time_base) * queue->GetDuration() > 1.0);
 }
 
-int FFFMPEGMediaTracks::get_buffer(AVCodecContext *s, AVFrame *frame, int flags) {
-    FFFMPEGMediaTracks* ist = (FFFMPEGMediaTracks*)s->opaque;    
-    return avcodec_default_get_buffer2(s, frame, flags);
-}
 
-enum AVPixelFormat FFFMPEGMediaTracks::get_format(AVCodecContext *s, const enum AVPixelFormat *pix_fmts) {
+enum AVPixelFormat FFFMPEGMediaTracks::GetFormatCallback(AVCodecContext *s, const enum AVPixelFormat *pix_fmts) {
     const enum AVPixelFormat *p;
     //int ret;
     FFFMPEGMediaTracks* tracks = (FFFMPEGMediaTracks*)s->opaque;
@@ -1449,7 +1444,7 @@ enum AVPixelFormat FFFMPEGMediaTracks::get_format(AVCodecContext *s, const enum 
         }
 
         if (config) {
-            if (config->device_type != tracks->hwaccel_device_type) {
+            if (config->device_type != tracks->hwAccelDeviceType) {
                 // Different hwaccel offered, ignore.
                 continue;
             }
@@ -1460,7 +1455,7 @@ enum AVPixelFormat FFFMPEGMediaTracks::get_format(AVCodecContext *s, const enum 
         }
 
       
-        tracks->hwaccel_pix_fmt = *p;
+        tracks->hwAccelPixFmt = *p;
         break;
 
     }
@@ -1483,21 +1478,20 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
     
     int stream_lowres = 0;
 
-    if (stream_index < 0 || stream_index >= (int)ic->nb_streams)
+    if (stream_index < 0 || stream_index >= (int)FormatContext->nb_streams)
         return -1;
 
     avctx = avcodec_alloc_context3(NULL);
 
-    ret = avcodec_parameters_to_context(avctx, ic->streams[stream_index]->codecpar);
+    ret = avcodec_parameters_to_context(avctx, FormatContext->streams[stream_index]->codecpar);
     if (ret < 0) {
         avcodec_free_context(&avctx);
         return ret;
     }
-    avctx->pkt_timebase = ic->streams[stream_index]->time_base;
+    avctx->pkt_timebase = FormatContext->streams[stream_index]->time_base;
     
     avctx->opaque = this;
-    avctx->get_format = get_format;
-    avctx->get_buffer2 = get_buffer;
+    avctx->get_format = GetFormatCallback;
     avctx->thread_safe_callbacks = 1;
 
     if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -1513,7 +1507,7 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
                 ret = av_hwdevice_ctx_create(&device_ref, type, NULL, NULL, 0);
                 if (ret < 0) {
                     hw_device_ctx = NULL;
-                    hwaccel_device_type = AV_HWDEVICE_TYPE_NONE;
+                    hwAccelDeviceType = AV_HWDEVICE_TYPE_NONE;
                     hwaccel_retrieve_data = nullptr;
                 }
                 else {
@@ -1523,8 +1517,8 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
                     const char* type_name = av_hwdevice_get_type_name(type);
                     UE_LOG(LogFFMPEGMedia, Display, TEXT("Using hardware context type: %s"), UTF8_TO_TCHAR(type_name));
 
-                    hwaccel_device_type = type;
-                    hwaccel_retrieve_data = hwaccel_retrieve_data_cb;
+                    hwAccelDeviceType = type;
+                    hwaccel_retrieve_data = HWAccelRetrieveDataCallback;
                     
                     break;
                 }
@@ -1589,37 +1583,37 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
     }
   
     eof = 0;
-    ic->streams[stream_index]->discard = AVDISCARD_DEFAULT;
+    FormatContext->streams[stream_index]->discard = AVDISCARD_DEFAULT;
 
     switch (avctx->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
-        audio_st = ic->streams[stream_index];
-        audio_stream = stream_index;
-        auddec->init(avctx, &audioq, &continue_read_thread);
-        if ((ic->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !ic->iformat->read_seek) {
-            auddec->set_time(audio_st->start_time, audio_st->time_base);
+        audioStream = FormatContext->streams[stream_index];
+        audioStreamIdx = stream_index;
+        auddec->Init(avctx, &audioq, &continueReadCond);
+        if ((FormatContext->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !FormatContext->iformat->read_seek) {
+            auddec->SetTime(audioStream->start_time, audioStream->time_base);
         }
-        if ((ret = auddec->start([this](void * data) {return AudioThread();}, NULL)) < 0) {
+        if ((ret = auddec->Start([this](void * data) {return AudioThread();}, NULL)) < 0) {
             av_dict_free(&opts);
             return ret;
         }
         break;
     case AVMEDIA_TYPE_VIDEO:
-        video_st = ic->streams[stream_index];
-        video_stream = stream_index;
-        viddec->init(avctx, &videoq, &continue_read_thread);
-        if ((ret = viddec->start([this](void * data) {return VideoThread();}, NULL)) < 0) {
+        videoStream = FormatContext->streams[stream_index];
+        videoStreamIdx = stream_index;
+        viddec->Init(avctx, &videoq, &continueReadCond);
+        if ((ret = viddec->Start([this](void * data) {return VideoThread();}, NULL)) < 0) {
             av_dict_free(&opts);
             return ret;
         }
-        queue_attachments_req = true;
+        queueAttachmentsReq = true;
         video_ctx = avctx;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
-        subtitle_st = ic->streams[stream_index];
-        subtitle_stream = stream_index;
-        subdec->init(avctx, &subtitleq, &continue_read_thread);
-        if ((ret = subdec->start([this](void * data) {return SubtitleThread();}, NULL)) < 0) {
+        subTitleStream = FormatContext->streams[stream_index];
+        subtitleStreamIdx = stream_index;
+        subdec->Init(avctx, &subtitleq, &continueReadCond);
+        if ((ret = subdec->Start([this](void * data) {return SubtitleThread();}, NULL)) < 0) {
             av_dict_free(&opts);
             return ret;
         }
@@ -1636,29 +1630,29 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
 void FFFMPEGMediaTracks::StreamComponentClose(int stream_index) {
     AVCodecParameters *codecpar;
 
-    if (stream_index < 0 || stream_index >= (int)ic->nb_streams)
+    if (stream_index < 0 || stream_index >= (int)FormatContext->nb_streams)
         return;
-    codecpar = ic->streams[stream_index]->codecpar;
+    codecpar = FormatContext->streams[stream_index]->codecpar;
 
     switch (codecpar->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
-        auddec->abort(&sampq);
-        stopAudioRenderThread();
+        auddec->Abort(&sampq);
+        StopAudioRenderThread();
     
-        auddec->destroy();
-        swr_free(&swr_ctx);
-        swr_ctx = NULL;
-        av_freep(&audio_buf1);
-        audio_buf1_size = 0;
-        audio_buf = NULL;
-        audio_clock = 0;
+        auddec->Destroy();
+        swr_free(&swrContext);
+        swrContext = NULL;
+        av_freep(&audioBuf1);
+        audioBuf1Size = 0;
+        audioBuf = NULL;
+        audioClock = 0;
         break;
     case AVMEDIA_TYPE_VIDEO:
-        viddec->abort(&pictq);
-        stopDisplayThread();
+        viddec->Abort(&pictq);
+        StopDisplayThread();
 
         video_ctx = NULL;
-        viddec->destroy();
+        viddec->Destroy();
         SelectedVideoTrack = -1;
 
         if ( hw_device_ctx ) {
@@ -1666,30 +1660,30 @@ void FFFMPEGMediaTracks::StreamComponentClose(int stream_index) {
         }
        
         hwaccel_retrieve_data = nullptr;
-        hwaccel_pix_fmt = AV_PIX_FMT_NONE;
+        hwAccelPixFmt = AV_PIX_FMT_NONE;
        
 
         break;
     case AVMEDIA_TYPE_SUBTITLE:
-        subdec->abort(&subpq);
-        subdec->destroy();
+        subdec->Abort(&subpq);
+        subdec->Destroy();
         break;
     default:
         break;
     }
 
-    ic->streams[stream_index]->discard = AVDISCARD_ALL;
+    FormatContext->streams[stream_index]->discard = AVDISCARD_ALL;
     switch (codecpar->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
-        audio_st = NULL;
+        audioStream = NULL;
         SelectedAudioTrack = -1;
         break;
     case AVMEDIA_TYPE_VIDEO:
-        video_st = NULL;
+        videoStream = NULL;
         SelectedVideoTrack = -1;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
-        subtitle_st = NULL;
+        subTitleStream = NULL;
         SelectedCaptionTrack = -1;
         break;
     default:
@@ -1708,35 +1702,35 @@ void FFFMPEGMediaTracks::StepToNextFrame() {
 
 void FFFMPEGMediaTracks::StreamTogglePause() {
     if (CurrentState == EMediaState::Paused) {
-        frame_timer += av_gettime_relative() / 1000000.0 - vidclk.get_last_updated();
-        if (read_pause_return != AVERROR(ENOSYS)) {
-            vidclk.set_paused(0);
+        frameTimer += av_gettime_relative() / 1000000.0 - vidclk.GetLastUpdated();
+        if (readPauseReturn != AVERROR(ENOSYS)) {
+            vidclk.SetPaused(false);
         }
-        vidclk.set(vidclk.get(), vidclk.get_serial());
+        vidclk.Set(vidclk.Get(), vidclk.GetSerial());
     }
-    extclk.set(extclk.get(), extclk.get_serial());
+    extclk.Set(extclk.Get(), extclk.GetSerial());
     bool paused = CurrentState == EMediaState::Paused || CurrentState == EMediaState::Stopped;
     paused = !paused;
 
-    audclk.set_paused(paused);
-    vidclk.set_paused(paused);
-    extclk.set_paused(paused);
+    audclk.SetPaused(paused);
+    vidclk.SetPaused(paused);
+    extclk.SetPaused(paused);
 }
 
 double FFFMPEGMediaTracks::ComputeTargetDelay(double delay) {
     double sync_threshold, diff = 0;
 
     /* update delay to follow master synchronisation source */
-    if (get_master_sync_type() != ESynchronizationType::VideoMaster) {
+    if (getMasterSyncType() != ESynchronizationType::VideoMaster) {
         /* if video is slave, we try to correct big delays by
             duplicating or deleting a FFMPEGFrame */
-        diff = vidclk.get() - GetMasterClock();
+        diff = vidclk.Get() - GetMasterClock();
 
         /* skip or repeat frame. We take into account the
             delay to compute the threshold. I still don't know
             if it is the best guess */
         sync_threshold = FFMAX(AV_SYNC_THRESHOLD_MIN, FFMIN(AV_SYNC_THRESHOLD_MAX, delay));
-        if (!isnan(diff) && fabs(diff) < max_frame_duration) {
+        if (!isnan(diff) && fabs(diff) < maxFrameDuration) {
             if (diff <= -sync_threshold)
                 delay = FFMAX(0, delay + diff);
             else if (diff >= sync_threshold && delay > AV_SYNC_FRAMEDUP_THRESHOLD)
@@ -1752,18 +1746,18 @@ double FFFMPEGMediaTracks::ComputeTargetDelay(double delay) {
     return delay;
 }
 
-ESynchronizationType FFFMPEGMediaTracks::get_master_sync_type() {
+ESynchronizationType FFFMPEGMediaTracks::getMasterSyncType() {
 
-    if (av_sync_type == ESynchronizationType::VideoMaster) {
-        if (video_st)
+    if (sychronizationType == ESynchronizationType::VideoMaster) {
+        if (videoStream)
             return ESynchronizationType::VideoMaster;
         else
             return ESynchronizationType::AudioMaster;
     }
-    else if (av_sync_type == ESynchronizationType::AudioMaster) {
-        if (audio_st)
+    else if (sychronizationType == ESynchronizationType::AudioMaster) {
+        if (audioStream)
             return ESynchronizationType::AudioMaster;
-        else if (video_st)
+        else if (videoStream)
             return ESynchronizationType::VideoMaster;
     }
     
@@ -1771,38 +1765,38 @@ ESynchronizationType FFFMPEGMediaTracks::get_master_sync_type() {
 }
 
 void FFFMPEGMediaTracks::UpdateVideoPts(double pts, int64_t pos, int serial) {
-    vidclk.set(pts, serial);
-    extclk.sync_to_slave(&vidclk);
+    vidclk.Set(pts, serial);
+    extclk.SyncToSlave(&vidclk);
 }
 
 void FFFMPEGMediaTracks::CheckExternalClockSpeed() {
-    if (video_stream >= 0 && videoq.get_nb_packets() <= EXTERNAL_CLOCK_MIN_FRAMES ||
-        audio_stream >= 0 && audioq.get_nb_packets() <= EXTERNAL_CLOCK_MIN_FRAMES) {
-        extclk.set_speed(FFMAX(EXTERNAL_CLOCK_SPEED_MIN, extclk.get_speed() - EXTERNAL_CLOCK_SPEED_STEP));
+    if (videoStreamIdx >= 0 && videoq.GetNumPackets() <= EXTERNAL_CLOCK_MIN_FRAMES ||
+        audioStreamIdx >= 0 && audioq.GetNumPackets() <= EXTERNAL_CLOCK_MIN_FRAMES) {
+        extclk.SetSpeed(FFMAX(EXTERNAL_CLOCK_SPEED_MIN, extclk.GetSpeed() - EXTERNAL_CLOCK_SPEED_STEP));
     }
-    else if ((video_stream < 0 || videoq.get_nb_packets() > EXTERNAL_CLOCK_MAX_FRAMES) &&
-        (audio_stream < 0 || audioq.get_nb_packets() > EXTERNAL_CLOCK_MAX_FRAMES)) {
-        extclk.set_speed(FFMIN(EXTERNAL_CLOCK_SPEED_MAX, extclk.get_speed() + EXTERNAL_CLOCK_SPEED_STEP));
+    else if ((videoStreamIdx < 0 || videoq.GetNumPackets() > EXTERNAL_CLOCK_MAX_FRAMES) &&
+        (audioStreamIdx < 0 || audioq.GetNumPackets() > EXTERNAL_CLOCK_MAX_FRAMES)) {
+        extclk.SetSpeed(FFMIN(EXTERNAL_CLOCK_SPEED_MAX, extclk.GetSpeed() + EXTERNAL_CLOCK_SPEED_STEP));
     }
     else {
-        double speed = extclk.get_speed();
+        double speed = extclk.GetSpeed();
         if (speed != 1.0)
-            extclk.set_speed(speed + EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed));
+            extclk.SetSpeed(speed + EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed));
     }
 }
 
 double FFFMPEGMediaTracks::GetMasterClock() {
     double val;
 
-    switch (get_master_sync_type()) {
+    switch (getMasterSyncType()) {
     case ESynchronizationType::VideoMaster:
-        val = vidclk.get();
+        val = vidclk.Get();
         break;
     case ESynchronizationType::AudioMaster:
-        val = audclk.get();
+        val = audclk.Get();
         break;
     default:
-        val = extclk.get();
+        val = extclk.Get();
         break;
     }
     return val;
@@ -1846,8 +1840,8 @@ int FFFMPEGMediaTracks::UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct Sw
 
     FIntPoint Dim = {frame->width, frame->height};
 
-    FTimespan Time = FTimespan::FromSeconds(vp->get_pts());
-    FTimespan Duration = FTimespan::FromSeconds(vp->get_duration());
+    FTimespan Time = FTimespan::FromSeconds(vp->GetPts());
+    FTimespan Duration = FTimespan::FromSeconds(vp->GetDuration());
 
     if (TextureSample->Initialize(
         dataBuffer.GetData(),
@@ -1865,33 +1859,33 @@ int FFFMPEGMediaTracks::UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct Sw
 }
 
 void FFFMPEGMediaTracks::VideoDisplay () {
-    if (video_st) {
+    if (videoStream) {
             FFMPEGFrame *vp;
             FFMPEGFrame *sp = NULL;
             
 
-            vp = pictq.peek_last();
-            if (subtitle_st) {
-                if (subpq.get_nb_remaining() > 0) {
-                    sp = subpq.peek();
+            vp = pictq.PeekLast();
+            if (subTitleStream) {
+                if (subpq.GetNumRemaining() > 0) {
+                    sp = subpq.Peek();
 
-                    if (vp->get_pts() >= sp->get_pts() + ((float)sp->get_sub().start_display_time / 1000)) {
-                        if (!sp->get_uploaded()) {
+                    if (vp->GetPts() >= sp->GetPts() + ((float)sp->GetSub().start_display_time / 1000)) {
+                        if (!sp->IsUploaded()) {
                             
                             int i;
-                            if (!sp->get_width() || !sp->get_height()) {
-                                sp->update_size(vp);
+                            if (!sp->GetWidth() || !sp->GetHeight()) {
+                                sp->UpdateSize(vp);
                             }
                             
-                            FTimespan Time = FTimespan::FromSeconds(sp->get_pts());
-                            FTimespan Duration = FTimespan::FromSeconds(sp->get_duration());
+                            FTimespan Time = FTimespan::FromSeconds(sp->GetPts());
+                            FTimespan Duration = FTimespan::FromSeconds(sp->GetDuration());
 
-                            for (i = 0; i < (int)sp->get_sub().num_rects; i++) {
-                                AVSubtitleRect *sub_rect = sp->get_sub().rects[i];
-                                sub_rect->x = av_clip(sub_rect->x, 0, sp->get_width());
-                                sub_rect->y = av_clip(sub_rect->y, 0, sp->get_height());
-                                sub_rect->w = av_clip(sub_rect->w, 0, sp->get_width() - sub_rect->x);
-                                sub_rect->h = av_clip(sub_rect->h, 0, sp->get_height() - sub_rect->y);
+                            for (i = 0; i < (int)sp->GetSub().num_rects; i++) {
+                                AVSubtitleRect *sub_rect = sp->GetSub().rects[i];
+                                sub_rect->x = av_clip(sub_rect->x, 0, sp->GetWidth());
+                                sub_rect->y = av_clip(sub_rect->y, 0, sp->GetHeight());
+                                sub_rect->w = av_clip(sub_rect->w, 0, sp->GetWidth() - sub_rect->x);
+                                sub_rect->h = av_clip(sub_rect->h, 0, sp->GetHeight() - sub_rect->y);
 
                                 if ( sub_rect->type == SUBTITLE_TEXT ||  sub_rect->type == SUBTITLE_ASS) {
                                     FScopeLock Lock(&CriticalSection);
@@ -1905,7 +1899,7 @@ void FFFMPEGMediaTracks::VideoDisplay () {
                                 }
 
                             }
-                            sp->set_uploaded(1);
+                            sp->SetUploaded(true);
                         }
                     }
                     else
@@ -1913,47 +1907,25 @@ void FFFMPEGMediaTracks::VideoDisplay () {
                 }
             }
 
-            if (!vp->get_uploaded()) {
-                vp->set_flip_v(vp->get_frame()->linesize[0] < 0);
-                if (UploadTexture(vp, vp->get_frame(), &img_convert_ctx) < 0)
+            if (!vp->IsUploaded()) {
+                vp->SetVerticalFlip(vp->GetFrame()->linesize[0] < 0);
+                if (UploadTexture(vp, vp->GetFrame(), &imgConvertCtx) < 0)
                     return;
-                vp->set_uploaded(1);
+                vp->SetUploaded(true);
                 
-                
-            } else {
-                
-            }
-            
-    /*
-            if (sp) {
-    #if USE_ONEPASS_SUBTITLE_RENDER
-                SDL_RenderCopy(renderer, is->sub_texture, NULL, &rect);
-    #else
-                int i;
-                double xratio = (double)rect.w / (double)sp->get_width();
-                double yratio = (double)rect.h / (double)sp->get_height();
-                for (i = 0; i < sp->get_sub().num_rects; i++) {
-                    / *SDL_Rect *sub_rect = (SDL_Rect*)sp->sub.rects[i];
-                    SDL_Rect target = { .x = rect.x + sub_rect->x * xratio,
-                                       .y = rect.y + sub_rect->y * yratio,
-                                       .w = sub_rect->w * xratio,
-                                       .h = sub_rect->h * yratio };
-                    SDL_RenderCopy(renderer, is->sub_texture, sub_rect, &target);* /
-                }
-    #endif
-            }*/
+            } 
         }   
 }
 
 void FFFMPEGMediaTracks::StreamSeek( int64_t pos, int64_t rel, int seek_by_bytes) {
-    if (!seek_req) {
-        seek_pos = pos;
-        seek_rel = rel;
-        seek_flags &= ~AVSEEK_FLAG_BYTE;
+    if (!seekReq) {
+        seekPos = pos;
+        seekRel = rel;
+        seekFlags &= ~AVSEEK_FLAG_BYTE;
         if (seek_by_bytes)
-            seek_flags |= AVSEEK_FLAG_BYTE;
-        seek_req = 1;
-        continue_read_thread.signal();
+            seekFlags |= AVSEEK_FLAG_BYTE;
+        seekReq = 1;
+        continueReadCond.signal();
     }
 }
 
@@ -1980,9 +1952,9 @@ int FFFMPEGMediaTracks::ReadThread() {
         if (aborted)
             break;
 
-        if (current_streams < total_streams) {
+        if (currentStreams < totalStreams) {
             wait_mutex.Lock();
-            continue_read_thread.waitTimeout(wait_mutex, 10);
+            continueReadCond.waitTimeout(wait_mutex, 10);
             wait_mutex.Unlock();
             continue;
         }
@@ -1995,44 +1967,44 @@ int FFFMPEGMediaTracks::ReadThread() {
             last_paused = paused;
 
             if (paused)
-                read_pause_return = av_read_pause(ic);
+                read_pause_return = av_read_pause(FormatContext);
             else
-                av_read_play(ic);
+                av_read_play(FormatContext);
         }      
 
-        if (  seek_req ) {
-            int64_t seek_target = seek_pos;
-            int64_t seek_min = seek_rel > 0 ? seek_target - seek_rel + 2 : INT64_MIN;
-            int64_t seek_max = seek_rel < 0 ? seek_target - seek_rel - 2 : INT64_MAX;
+        if (  seekReq ) {
+            int64_t seek_target = seekPos;
+            int64_t seek_min = seekRel > 0 ? seek_target - seekRel + 2 : INT64_MIN;
+            int64_t seek_max = seekRel < 0 ? seek_target - seekRel - 2 : INT64_MAX;
 
-            ret = avformat_seek_file(ic, -1, seek_min, seek_target, seek_max, seek_flags);
+            ret = avformat_seek_file(FormatContext, -1, seek_min, seek_target, seek_max, seekFlags);
             if (ret < 0) {
-                UE_LOG(LogFFMPEGMedia, Error, TEXT("%s: error while seeking"), UTF8_TO_TCHAR(ic->url));
+                UE_LOG(LogFFMPEGMedia, Error, TEXT("%s: error while seeking"), UTF8_TO_TCHAR(FormatContext->url));
             } else {
                 if (SelectedAudioTrack  != INDEX_NONE) {
-                    audioq.flush();
-                    audioq.put_flush();
+                    audioq.Flush();
+                    audioq.PutFlush();
                 }
                 if (SelectedCaptionTrack != INDEX_NONE) {
-                    subtitleq.flush();
-                    subtitleq.put_flush();
+                    subtitleq.Flush();
+                    subtitleq.PutFlush();
                 }
                 if (SelectedVideoTrack != INDEX_NONE) {
-                    videoq.flush();
-                    videoq.put_flush();
+                    videoq.Flush();
+                    videoq.PutFlush();
                 }
-                if (seek_flags & AVSEEK_FLAG_BYTE) {
-                    extclk.set(NAN, 0);
+                if (seekFlags & AVSEEK_FLAG_BYTE) {
+                    extclk.Set(NAN, 0);
                 }
                 else {
-                    extclk.set(seek_target / (double)AV_TIME_BASE, 0);
+                    extclk.Set(seek_target / (double)AV_TIME_BASE, 0);
                 }
 
                 FlushSamples();
                 DeferredEvents.Enqueue(EMediaEvent::SeekCompleted);
             }
-            seek_req = false;
-            queue_attachments_req = true;
+            seekReq = false;
+            queueAttachmentsReq = true;
             eof = 0;
             
             if (CurrentState == EMediaState::Paused)
@@ -2040,37 +2012,38 @@ int FFFMPEGMediaTracks::ReadThread() {
         }
 
 
-        if (queue_attachments_req) {
-            if (video_st && video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+        if (queueAttachmentsReq) {
+            if (videoStream && videoStream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
                 AVPacket copy = { 0 };
-                if ((ret = av_packet_ref(&copy, &video_st->attached_pic)) < 0) {
+                if ((ret = av_packet_ref(&copy, &videoStream->attached_pic)) < 0) {
                     return -1;
                 }
 
-                videoq.put(&copy);
-                videoq.put_nullpacket(video_stream);
+                videoq.Put(&copy);
+                videoq.PutNullPacket(videoStreamIdx);
             }
-            queue_attachments_req = false;
+            queueAttachmentsReq = false;
         }
 
         if (!Settings->UseInfiniteBuffer &&
-            (audioq.get_size() + videoq.get_size() + subtitleq.get_size() > MAX_QUEUE_SIZE
-                || (StreamHasEnoughPackets(audio_st, audio_stream, &audioq) &&
-                    StreamHasEnoughPackets(video_st, video_stream, &videoq) &&
-                    StreamHasEnoughPackets(subtitle_st, subtitle_stream, &subtitleq)))) {
+            (audioq.GetSize() + videoq.GetSize() + subtitleq.GetSize() > MAX_QUEUE_SIZE
+                || (StreamHasEnoughPackets(audioStream, audioStreamIdx, &audioq) &&
+                    StreamHasEnoughPackets(videoStream, videoStreamIdx, &videoq) &&
+                    StreamHasEnoughPackets(subTitleStream, subtitleStreamIdx, &subtitleq)))) {
             /* wait 20 ms */
             wait_mutex.Lock();
-            continue_read_thread.waitTimeout(wait_mutex, 20);
+            continueReadCond.waitTimeout(wait_mutex, 20);
             wait_mutex.Unlock();
             continue;
         }
 
         if (!paused &&
-            (!audio_st || (auddec->get_finished() == audioq.get_serial() && sampq.get_nb_remaining() == 0)) &&
-            (!video_st || (viddec->get_finished() == videoq.get_serial() && pictq.get_nb_remaining() == 0))) {
-
+            (!audioStream || (auddec->GetFinished() == audioq.GetSerial() && sampq.GetNumRemaining() == 0)) &&
+            (!videoStream || (viddec->GetFinished() == videoq.GetSerial() && pictq.GetNumRemaining() == 0))) {
+            
+            FlushSamples();
+            
             if (ShouldLoop) {
-                FlushSamples();
                 DeferredEvents.Enqueue(EMediaEvent::PlaybackEndReached);
                 StreamSeek(0, 0, 0);
             }
@@ -2081,22 +2054,22 @@ int FFFMPEGMediaTracks::ReadThread() {
                 bPrerolled = false;
             }
         }
-        ret = av_read_frame(ic, pkt);
+        ret = av_read_frame(FormatContext, pkt);
         if (ret < 0) {
-            if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !eof) {
-                if (video_stream >= 0)
-                    videoq.put_nullpacket(video_stream);
-                if (audio_stream >= 0)
-                    audioq.put_nullpacket(audio_stream);
-                if (subtitle_stream >= 0)
-                    subtitleq.put_nullpacket(subtitle_stream);
+            if ((ret == AVERROR_EOF || avio_feof(FormatContext->pb)) && !eof) {
+                if (videoStreamIdx >= 0)
+                    videoq.PutNullPacket(videoStreamIdx);
+                if (audioStreamIdx >= 0)
+                    audioq.PutNullPacket(audioStreamIdx);
+                if (subtitleStreamIdx >= 0)
+                    subtitleq.PutNullPacket(subtitleStreamIdx);
                 eof = 1;
             }
-            if (ic->pb && ic->pb->error)
+            if (FormatContext->pb && FormatContext->pb->error)
                 break;
 
             wait_mutex.Lock();
-            continue_read_thread.waitTimeout(wait_mutex, 5);
+            continueReadCond.waitTimeout(wait_mutex, 5);
             wait_mutex.Unlock();
             continue;
         }
@@ -2104,19 +2077,19 @@ int FFFMPEGMediaTracks::ReadThread() {
             eof = 0;
         }
         /* check if packet is in play range specified by user, then queue, otherwise discard */
-        stream_start_time = ic->streams[pkt->stream_index]->start_time;
+        stream_start_time = FormatContext->streams[pkt->stream_index]->start_time;
         pkt_ts = pkt->pts == AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
 
         pkt_in_play_range = 1;
-        if (pkt->stream_index == audio_stream && pkt_in_play_range) {
-            audioq.put(pkt);
+        if (pkt->stream_index == audioStreamIdx && pkt_in_play_range) {
+            audioq.Put(pkt);
         }
-        else if (pkt->stream_index == video_stream && pkt_in_play_range
-            && !(video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
-            videoq.put(pkt);
+        else if (pkt->stream_index == videoStreamIdx && pkt_in_play_range
+            && !(videoStream->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
+            videoq.Put(pkt);
         }
-        else if (pkt->stream_index == subtitle_stream && pkt_in_play_range) {
-            subtitleq.put(pkt);
+        else if (pkt->stream_index == subtitleStreamIdx && pkt_in_play_range) {
+            subtitleq.Put(pkt);
         }
         else {
             av_packet_unref(pkt);
@@ -2138,26 +2111,26 @@ int FFFMPEGMediaTracks::AudioThread() {
         return AVERROR(ENOMEM);
 
     do {
-        if ((got_frame = auddec->decode_frame(frame, NULL)) < 0) {
+        if ((got_frame = auddec->DecodeFrame(frame, NULL)) < 0) {
             av_frame_free(&frame);
             return ret;
         }
 
         if (got_frame) {
             tb = { 1, frame->sample_rate };
-            af = sampq.peek_writable();
+            af = sampq.PeekWritable();
             if (!af) {
                 av_frame_free(&frame);
                 return ret;
             }
 
-            af->set_pts((frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb));
-            af->set_pos(frame->pkt_pos);
-            af->set_serial(auddec->get_pkt_serial());
-            af->set_duration(av_q2d({ frame->nb_samples, frame->sample_rate }));
+            af->SetPts((frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb));
+            af->SetPos(frame->pkt_pos);
+            af->SetSerial(auddec->GetPktSerial());
+            af->SetDuration(av_q2d({ frame->nb_samples, frame->sample_rate }));
 
-            av_frame_move_ref(af->get_frame(), frame);
-            sampq.push();
+            av_frame_move_ref(af->GetFrame(), frame);
+            sampq.Push();
 
         }
     } while (ret >= 0 || ret == AVERROR(EAGAIN) || ret == AVERROR_EOF);
@@ -2172,31 +2145,31 @@ int FFFMPEGMediaTracks::SubtitleThread() {
     double pts;
 
     for (;;) {
-        sp = subpq.peek_writable();
+        sp = subpq.PeekWritable();
         if (!sp)
             return 0;
 
-        if ((got_subtitle = subdec->decode_frame(NULL, &sp->get_sub())) < 0)
+        if ((got_subtitle = subdec->DecodeFrame(NULL, &sp->GetSub())) < 0)
             break;
 
         pts = 0;
 
-        if (got_subtitle && sp->get_sub().format == 0) {
-            if (sp->get_sub().pts != AV_NOPTS_VALUE)
-                pts = sp->get_sub().pts / (double)AV_TIME_BASE;
+        if (got_subtitle && sp->GetSub().format == 0) {
+            if (sp->GetSub().pts != AV_NOPTS_VALUE)
+                pts = sp->GetSub().pts / (double)AV_TIME_BASE;
 
 
-            sp->set_pts(pts);
-            sp->set_serial(subdec->get_pkt_serial());
-            sp->set_width(subdec->get_avctx()->width);
-            sp->set_height(subdec->get_avctx()->height);
-            sp->set_uploaded(0);
+            sp->SetPts(pts);
+            sp->SetSerial(subdec->GetPktSerial());
+            sp->SetWidth(subdec->GetAvctx()->width);
+            sp->SetHeight(subdec->GetAvctx()->height);
+            sp->SetUploaded(false);
 
             /* now we can update the picture count */
-            subpq.push();
+            subpq.Push();
         }
         else if (got_subtitle) {
-            avsubtitle_free(&sp->get_sub());
+            avsubtitle_free(&sp->GetSub());
         }
     }
     return 0;
@@ -2206,22 +2179,22 @@ int FFFMPEGMediaTracks::SynchronizeAudio( int nb_samples) {
      int wanted_nb_samples = nb_samples;
 
         /* if not master, then we try to remove or add samples to correct the clock */
-        if (get_master_sync_type() != ESynchronizationType::AudioMaster) {
+        if (getMasterSyncType() != ESynchronizationType::AudioMaster) {
             double diff, avg_diff;
             int min_nb_samples, max_nb_samples;
 
-            diff = audclk.get() - GetMasterClock();
+            diff = audclk.Get() - GetMasterClock();
 
             if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD) {
-                audio_diff_cum = diff + audio_diff_avg_coef * audio_diff_cum;
-                if (audio_diff_avg_count < AUDIO_DIFF_AVG_NB) {
+                audioDiffCum = diff + audioDiffAvgCoef * audioDiffCum;
+                if (audioDiffAvgCount < AUDIO_DIFF_AVG_NB) {
                     /* not enough measures to have a correct estimate */
-                    audio_diff_avg_count++;
+                    audioDiffAvgCount++;
                 } else {
                     /* estimate the A-V difference */
-                    avg_diff = audio_diff_cum * (1.0 - audio_diff_avg_coef);
+                    avg_diff = audioDiffCum * (1.0 - audioDiffAvgCoef);
 
-                    if (fabs(avg_diff) >= audio_diff_threshold) {
+                    if (fabs(avg_diff) >= audioDiffThreshold) {
                         wanted_nb_samples = nb_samples + (int)(diff * srcAudio.SampleRate);
                         min_nb_samples = ((nb_samples * (100 - SAMPLE_CORRECTION_PERCENT_MAX) / 100));
                         max_nb_samples = ((nb_samples * (100 + SAMPLE_CORRECTION_PERCENT_MAX) / 100));
@@ -2229,13 +2202,13 @@ int FFFMPEGMediaTracks::SynchronizeAudio( int nb_samples) {
                     }
                     /*OFX_LOGP(ofx_trace, "diff=%f adiff=%f sample_diff=%d apts=%0.3f %f\n",
                             diff, avg_diff, wanted_nb_samples - nb_samples,
-                            audio_clock, audio_diff_threshold);*/
+                            audioClock, audioDiffThreshold);*/
                 }
             } else {
                 /* too big difference : may be initial PTS errors, so
                    reset A-V filter */
-                audio_diff_avg_count = 0;
-                audio_diff_cum       = 0;
+                audioDiffAvgCount = 0;
+                audioDiffCum       = 0;
             }
         }
 
@@ -2254,103 +2227,101 @@ int FFFMPEGMediaTracks::AudioDecodeFrame(FTimespan& Time, FTimespan& Duration) {
 
     do {
 #if defined(_WIN32)
-        while (sampq.get_nb_remaining() == 0) {
-            if ((av_gettime_relative() - audio_callback_time) > 1000000LL * targetAudio.HardwareSize /  targetAudio.BytesPerSec / 2)
+        while (sampq.GetNumRemaining() == 0) {
+            if ((av_gettime_relative() - audioCallbackTime) > 1000000LL * targetAudio.HardwareSize /  targetAudio.BytesPerSec / 2)
                 return -1;
             av_usleep(1000);
         }
 #endif
-        af = sampq.peek_readable();
+        af = sampq.PeekReadable();
         if (!af)
             return -1;
-        sampq.next();
-    } while (af->get_serial() != audioq.get_serial());
+        sampq.Next();
+    } while (af->GetSerial() != audioq.GetSerial());
 
-    data_size = av_samples_get_buffer_size(NULL, af->get_frame()->channels,
-        af->get_frame()->nb_samples,
-        (AVSampleFormat)af->get_frame()->format, 1);
+    data_size = av_samples_get_buffer_size(NULL, af->GetFrame()->channels, af->GetFrame()->nb_samples, (AVSampleFormat)af->GetFrame()->format, 1);
 
     dec_channel_layout =
-        (af->get_frame()->channel_layout && af->get_frame()->channels == av_get_channel_layout_nb_channels(af->get_frame()->channel_layout)) ?
-        af->get_frame()->channel_layout : av_get_default_channel_layout(af->get_frame()->channels);
-    wanted_nb_samples = SynchronizeAudio(af->get_frame()->nb_samples);
+        (af->GetFrame()->channel_layout && af->GetFrame()->channels == av_get_channel_layout_nb_channels(af->GetFrame()->channel_layout)) ?
+        af->GetFrame()->channel_layout : av_get_default_channel_layout(af->GetFrame()->channels);
+    wanted_nb_samples = SynchronizeAudio(af->GetFrame()->nb_samples);
 
-    if (get_master_sync_type() == ESynchronizationType::AudioMaster) {
-        CurrentTime = FTimespan::FromSeconds(af->get_pts());
+    if (getMasterSyncType() == ESynchronizationType::AudioMaster) {
+        CurrentTime = FTimespan::FromSeconds(af->GetPts());
         //CurrentTime = FTimespan::FromSeconds(audclk.get());
     }
 
-    if (af->get_frame()->format != srcAudio.Format ||
+    if (af->GetFrame()->format != srcAudio.Format ||
         dec_channel_layout != srcAudio.ChannelLayout ||
-        af->get_frame()->sample_rate != srcAudio.SampleRate||
-        (wanted_nb_samples != af->get_frame()->nb_samples && !swr_ctx)) {
-        swr_free(&swr_ctx);
-        swr_ctx = swr_alloc_set_opts(NULL,
+        af->GetFrame()->sample_rate != srcAudio.SampleRate||
+        (wanted_nb_samples != af->GetFrame()->nb_samples && !swrContext)) {
+        swr_free(&swrContext);
+        swrContext = swr_alloc_set_opts(NULL,
             targetAudio.ChannelLayout, targetAudio.Format,targetAudio.SampleRate,
-            dec_channel_layout, (AVSampleFormat)af->get_frame()->format, af->get_frame()->sample_rate,
+            dec_channel_layout, (AVSampleFormat)af->GetFrame()->format, af->GetFrame()->sample_rate,
             0, NULL);
-        if (!swr_ctx || swr_init(swr_ctx) < 0) {
+        if (!swrContext || swr_init(swrContext) < 0) {
             UE_LOG(LogFFMPEGMedia, Error, 
                 TEXT("Cannot create sample rate converter for conversion of %d Hz %s %d channels to %d Hz %s %d channels!"),
-                af->get_frame()->sample_rate, UTF8_TO_TCHAR( av_get_sample_fmt_name((AVSampleFormat)af->get_frame()->format)), af->get_frame()->channels,
+                af->GetFrame()->sample_rate, UTF8_TO_TCHAR( av_get_sample_fmt_name((AVSampleFormat)af->GetFrame()->format)), af->GetFrame()->channels,
                 targetAudio.SampleRate,  UTF8_TO_TCHAR(av_get_sample_fmt_name(targetAudio.Format)), targetAudio.NumChannels);
-            swr_free(&swr_ctx);
+            swr_free(&swrContext);
             return -1;
         }
         srcAudio.ChannelLayout = dec_channel_layout;
-        srcAudio.NumChannels = af->get_frame()->channels;
-        srcAudio.SampleRate = af->get_frame()->sample_rate;
-        srcAudio.Format = (AVSampleFormat)af->get_frame()->format;
+        srcAudio.NumChannels = af->GetFrame()->channels;
+        srcAudio.SampleRate = af->GetFrame()->sample_rate;
+        srcAudio.Format = (AVSampleFormat)af->GetFrame()->format;
     }
 
-    if (swr_ctx) {
-        const uint8_t **in = (const uint8_t **)af->get_frame()->extended_data;
-        uint8_t **out = &audio_buf1;
-        int out_count = (int64_t)wanted_nb_samples * targetAudio.SampleRate / af->get_frame()->sample_rate + 256;
+    if (swrContext) {
+        const uint8_t **in = (const uint8_t **)af->GetFrame()->extended_data;
+        uint8_t **out = &audioBuf1;
+        int out_count = (int64_t)wanted_nb_samples * targetAudio.SampleRate / af->GetFrame()->sample_rate + 256;
         int out_size = av_samples_get_buffer_size(NULL, targetAudio.NumChannels, out_count,targetAudio.Format, 0);
         int len2;
         if (out_size < 0) {
             UE_LOG(LogFFMPEGMedia, Error,  TEXT("av_samples_get_buffer_size() failed"));
             return -1;
         }
-        if (wanted_nb_samples != af->get_frame()->nb_samples) {
-            if (swr_set_compensation(swr_ctx, (wanted_nb_samples - af->get_frame()->nb_samples) * targetAudio.SampleRate / af->get_frame()->sample_rate,
-                wanted_nb_samples *targetAudio.SampleRate / af->get_frame()->sample_rate) < 0) {
+        if (wanted_nb_samples != af->GetFrame()->nb_samples) {
+            if (swr_set_compensation(swrContext, (wanted_nb_samples - af->GetFrame()->nb_samples) * targetAudio.SampleRate / af->GetFrame()->sample_rate,
+                wanted_nb_samples *targetAudio.SampleRate / af->GetFrame()->sample_rate) < 0) {
                 UE_LOG(LogFFMPEGMedia, Error,  TEXT("swr_set_compensation() failed"));
                 return -1;
             }
         }
-        av_fast_malloc(&audio_buf1, &audio_buf1_size, out_size);
-        if (!audio_buf1)
+        av_fast_malloc(&audioBuf1, &audioBuf1Size, out_size);
+        if (!audioBuf1)
             return AVERROR(ENOMEM);
-        len2 = swr_convert(swr_ctx, out, out_count, in, af->get_frame()->nb_samples);
+        len2 = swr_convert(swrContext, out, out_count, in, af->GetFrame()->nb_samples);
         if (len2 < 0) {
             UE_LOG(LogFFMPEGMedia, Error,  TEXT("swr_convert() failed"));
             return -1;
         }
         if (len2 == out_count) {
             UE_LOG(LogFFMPEGMedia, Warning,  TEXT("audio buffer is probably too small"));
-            if (swr_init(swr_ctx) < 0)
-                swr_free(&swr_ctx);
+            if (swr_init(swrContext) < 0)
+                swr_free(&swrContext);
         }
-        audio_buf = audio_buf1;
+        audioBuf = audioBuf1;
         resampled_data_size = len2 * targetAudio.NumChannels * av_get_bytes_per_sample(targetAudio.Format);
     }
     else {
-        audio_buf = af->get_frame()->data[0];
+        audioBuf = af->GetFrame()->data[0];
         resampled_data_size = data_size;
     }
 
-    audio_clock0 = audio_clock;
+    audio_clock0 = audioClock;
     /* update the audio clock with the pts */
-    if (!isnan(af->get_pts()))
-        audio_clock = af->get_pts() + (double)af->get_frame()->nb_samples / af->get_frame()->sample_rate;
+    if (!isnan(af->GetPts()))
+        audioClock = af->GetPts() + (double)af->GetFrame()->nb_samples / af->GetFrame()->sample_rate;
     else
-        audio_clock = NAN;
-    audio_clock_serial = af->get_serial();
+        audioClock = NAN;
+    audioClockSerial = af->GetSerial();
 
-    Time = FTimespan::FromSeconds(audio_clock);
-    Duration = FTimespan::FromSeconds(af->get_duration());
+    Time = FTimespan::FromSeconds(audioClock);
+    Duration = FTimespan::FromSeconds(af->GetDuration());
     
     return resampled_data_size;
 }
@@ -2360,66 +2331,66 @@ int FFFMPEGMediaTracks::AudioDecodeFrame(FTimespan& Time, FTimespan& Duration) {
 void FFFMPEGMediaTracks::RenderAudio() {
     int audio_size, len1;
 
-    audio_callback_time = av_gettime_relative();
+    audioCallbackTime = av_gettime_relative();
     FTimespan Time = 0;
     FTimespan Duration = 0;
 
     audio_size = AudioDecodeFrame(Time, Duration);
     if (audio_size < 0) {
         /* if error, just output silence */
-        audio_buf = NULL;
-        audio_buf_size = AUDIO_MIN_BUFFER_SIZE / targetAudio.FrameSize * targetAudio.FrameSize;
+        audioBuf = NULL;
+        audioBufSize = AUDIO_MIN_BUFFER_SIZE / targetAudio.FrameSize * targetAudio.FrameSize;
     }
     else {
-        audio_buf_size = audio_size;
+        audioBufSize = audio_size;
     }
-    len1 = audio_buf_size ;
+    len1 = audioBufSize ;
 
     if (CurrentState == EMediaState::Paused || CurrentState == EMediaState::Stopped) {
         //Ignore the frame
     } else {
-        if ( audio_buf != NULL ) {
+        if ( audioBuf != NULL ) {
             FScopeLock Lock(&CriticalSection);
             const TSharedRef<FFFMPEGMediaAudioSample, ESPMode::ThreadSafe> AudioSample = AudioSamplePool->AcquireShared();
 
-            if (AudioSample->Initialize((uint8_t *)audio_buf, len1, targetAudio.NumChannels, targetAudio.SampleRate, Time, Duration))
+            if (AudioSample->Initialize((uint8_t *)audioBuf, len1, targetAudio.NumChannels, targetAudio.SampleRate, Time, Duration))
             {
                 AudioSampleQueue.Enqueue(AudioSample);
             }
         }
     }
 
-    if (!isnan(audio_clock)) {
-        audclk.set_at(audio_clock - (double)(2 * targetAudio.HardwareSize + audio_buf_size) / targetAudio.BytesPerSec, audio_clock_serial, audio_callback_time / 1000000.0);
-        extclk.sync_to_slave(&audclk);
+    if (!isnan(audioClock)) {
+        audclk.SetAt(audioClock - (double)(2 * targetAudio.HardwareSize + audioBufSize) / targetAudio.BytesPerSec, audioClockSerial, audioCallbackTime / 1000000.0);
+        extclk.SyncToSlave(&audclk);
     }
       
 }
 
-void FFFMPEGMediaTracks::startDisplayThread() {
-    stopDisplayThread();
+void FFFMPEGMediaTracks::StartDisplayThread() {
+    StopDisplayThread();
     displayRunning = true;
     displayThread = LambdaFunctionRunnable::RunThreaded("DisplayThread", [this](){
        DisplayThread(); 
     });
 }
 
-void FFFMPEGMediaTracks::stopDisplayThread() {
+void FFFMPEGMediaTracks::StopDisplayThread() {
     if (displayRunning && displayThread) {        
         displayThread = nullptr;
     }
     displayRunning = false;
 }
 
-void FFFMPEGMediaTracks::startAudioRenderThread() {
-    stopDisplayThread();
+void FFFMPEGMediaTracks::StartAudioRenderThread() {
+    StopDisplayThread();
     audioRunning = true;
     audioRenderThread = LambdaFunctionRunnable::RunThreaded("AudioRenderThread", [this]() {
         AudioRenderThread();
     });
 }
 
-void FFFMPEGMediaTracks::stopAudioRenderThread() {
+void FFFMPEGMediaTracks::StopAudioRenderThread() {
     if (audioRunning && audioRenderThread) {
         audioRenderThread = nullptr;
     }
@@ -2433,7 +2404,7 @@ int FFFMPEGMediaTracks::DisplayThread() {
         if (remaining_time > 0.0)
             av_usleep((int64_t)(remaining_time * 1000000.0));
         remaining_time = REFRESH_RATE;
-        if (bPrerolled && CurrentState == EMediaState::Playing || force_refresh  ) {
+        if (bPrerolled && CurrentState == EMediaState::Playing || forceRefresh  ) {
             VideoRefresh(&remaining_time);   
         }
     }
@@ -2467,118 +2438,118 @@ void FFFMPEGMediaTracks::VideoRefresh(double *remaining_time) {
 
     FFMPEGFrame *sp, *sp2;
 
-    if (CurrentState == EMediaState::Playing && get_master_sync_type() == ESynchronizationType::ExternalClock && realtime)
+    if (CurrentState == EMediaState::Playing && getMasterSyncType() == ESynchronizationType::ExternalClock && realtime)
         CheckExternalClockSpeed();
 
-      if (video_st) {
-retry:
-        if (pictq.get_nb_remaining() == 0) {
-            // nothing to do, no picture to display in the queue
-        } else {
-            double last_duration, duration, delay;
-            FFMPEGFrame *vp, *lastvp;
+      if (videoStream) {
+        bool retry = true;
+
+        while (retry) {
+            if (pictq.GetNumRemaining() == 0) {
+                // nothing to do, no picture to display in the queue
+            } else {
+                double last_duration, duration, delay;
+                FFMPEGFrame *vp, *lastvp;
 
 
-            /* dequeue the picture */
-            lastvp = pictq.peek_last();
-            vp = pictq.peek();
-            ESynchronizationType sync_type = get_master_sync_type();
-            if ( sync_type  == ESynchronizationType::VideoMaster) {
-                //CurrentTime = FTimespan::FromSeconds(vidclk.get());
-                CurrentTime = FTimespan::FromSeconds(vp->get_pts());
-            } else if (sync_type == ESynchronizationType::ExternalClock) {
-                CurrentTime = FTimespan::FromSeconds(extclk.get());
-            }
-
-
-            if (vp->get_serial() != videoq.get_serial()) {
-                pictq.next();
-                goto retry;
-            }
-
-            if (lastvp->get_serial() != vp->get_serial())
-                frame_timer = av_gettime_relative() / 1000000.0;
-
-            if (CurrentState == EMediaState::Paused || CurrentState == EMediaState::Stopped)
-                goto display;
-
-           
-            /* compute nominal last_duration */
-            last_duration = lastvp->get_difference(vp, max_frame_duration);
-            delay = ComputeTargetDelay(last_duration);
-
-            time= av_gettime_relative()/1000000.0;
-            if (time < frame_timer + delay) {
-                *remaining_time = FFMIN(frame_timer + delay - time, *remaining_time);
-                goto display;
-            }
-
-
-            frame_timer += delay;
-            if (delay > 0 && time - frame_timer > AV_SYNC_THRESHOLD_MAX)
-                frame_timer = time;
-
-            pictq.lock();
-            if (!isnan(vp->get_pts()))
-                UpdateVideoPts(vp->get_pts(), vp->get_pos(), vp->get_serial());
-            pictq.unlock();
-
-            if (pictq.get_nb_remaining() > 1) {
-                FFMPEGFrame *nextvp = pictq.peek_next();
-                duration = vp->get_difference(nextvp, max_frame_duration);
-                if(!step && (Settings->AllowFrameDrop && get_master_sync_type() != ESynchronizationType::VideoMaster) && time > frame_timer + duration){
-                    frame_drops_late++;
-                    pictq.next();
-                    goto retry;
+                /* dequeue the picture */
+                lastvp = pictq.PeekLast();
+                vp = pictq.Peek();
+                ESynchronizationType sync_type = getMasterSyncType();
+                if ( sync_type  == ESynchronizationType::VideoMaster) {
+                    //CurrentTime = FTimespan::FromSeconds(vidclk.get());
+                    CurrentTime = FTimespan::FromSeconds(vp->GetPts());
+                } else if (sync_type == ESynchronizationType::ExternalClock) {
+                    CurrentTime = FTimespan::FromSeconds(extclk.Get());
                 }
-            }
 
-            if (subtitle_st) {
-                    while (subpq.get_nb_remaining() > 0) {
-                        sp = subpq.peek();
 
-                        if (subpq.get_nb_remaining() > 1)
-                            sp2 = subpq.peek_next();
-                        else
-                            sp2 = NULL;
+                if (vp->GetSerial() != videoq.GetSerial()) {
+                    pictq.Next();
+                    continue;
+                }
 
-                        if (sp->get_serial() != subtitleq.get_serial()
-                                || (vidclk.get_pts() > (sp->get_pts() + ((float) sp->get_sub().end_display_time / 1000)))
-                                || (sp2 && vidclk.get_pts() > (sp2->get_pts() + ((float) sp2->get_sub().start_display_time / 1000))))
-                        {
-                            /*if (sp->get_uploaded()) {
-                                int i;
-                                for (i = 0; i < sp->get_sub().num_rects; i++) {
-                                    AVSubtitleRect *sub_rect = sp->get_sub().rects[i];
-                                    uint8_t *pixels;
-                                    int pitch, j;
+                if (lastvp->GetSerial() != vp->GetSerial())
+                    frameTimer = av_gettime_relative() / 1000000.0;
 
-                                    if (!SDL_LockTexture(sub_texture, (SDL_Rect *)sub_rect, (void **)&pixels, &pitch)) {
-                                        for (j = 0; j < sub_rect->h; j++, pixels += pitch)
-                                            memset(pixels, 0, sub_rect->w << 2);
-                                        SDL_UnlockTexture(sub_texture);
-                                    }
-                                }
-                            }*/
-                            subpq.next();
-                        } else {
-                            break;
-                        }
+                if (CurrentState == EMediaState::Paused || CurrentState == EMediaState::Stopped) {
+                    if (forceRefresh && pictq.GetIndexShown())
+                        VideoDisplay();
+                   
+                    forceRefresh = false;
+                    return;
+                }
+
+               
+                /* compute nominal last_duration */
+                last_duration = lastvp->GetDifference(vp, maxFrameDuration);
+                delay = ComputeTargetDelay(last_duration);
+
+                time= av_gettime_relative()/1000000.0;
+                if (time < frameTimer + delay) {
+                    *remaining_time = FFMIN(frameTimer + delay - time, *remaining_time);
+                    if (forceRefresh && pictq.GetIndexShown())
+                        VideoDisplay();
+
+                    forceRefresh = false;
+                    return;
+                }
+
+
+                frameTimer += delay;
+                if (delay > 0 && time - frameTimer > AV_SYNC_THRESHOLD_MAX)
+                    frameTimer = time;
+
+                pictq.Lock();
+                if (!isnan(vp->GetPts()))
+                    UpdateVideoPts(vp->GetPts(), vp->GetPos(), vp->GetSerial());
+                pictq.Unlock();
+
+                if (pictq.GetNumRemaining() > 1) {
+                    FFMPEGFrame *nextvp = pictq.PeekNext();
+                    duration = vp->GetDifference(nextvp, maxFrameDuration);
+                    if(!step && (Settings->AllowFrameDrop && getMasterSyncType() != ESynchronizationType::VideoMaster) && time > frameTimer + duration){
+                        frameDropsLate++;
+                        pictq.Next();
+                        continue;
                     }
+                }
+
+                if (subTitleStream) {
+                        while (subpq.GetNumRemaining() > 0) {
+                            sp = subpq.Peek();
+
+                            if (subpq.GetNumRemaining() > 1)
+                                sp2 = subpq.PeekNext();
+                            else
+                                sp2 = NULL;
+
+                            if (sp->GetSerial() != subtitleq.GetSerial()
+                                    || (vidclk.GetPts() > (sp->GetPts() + ((float) sp->GetSub().end_display_time / 1000)))
+                                    || (sp2 && vidclk.GetPts() > (sp2->GetPts() + ((float) sp2->GetSub().start_display_time / 1000))))
+                            {
+                                subpq.Next();
+                            } else {
+                                break;
+                            }
+                        }
+                }
+
+                pictq.Next();
+                forceRefresh = true;
+
+                if (step && CurrentState == EMediaState::Playing)
+                    StreamTogglePause();
+
+                retry = false;
             }
-
-            pictq.next();
-            force_refresh = true;
-
-            if (step && CurrentState == EMediaState::Playing)
-                StreamTogglePause();
         }
-display:
+
         /* display picture */
-        if (force_refresh && pictq.get_rindex_shown())
+        if (forceRefresh && pictq.GetIndexShown())
             VideoDisplay();
     }
-    force_refresh = false;
+    forceRefresh = false;
  /*   if (show_status) {
         static int64_t last_time;
         int64_t cur_time;
@@ -2590,30 +2561,30 @@ display:
             aqsize = 0;
             vqsize = 0;
             sqsize = 0;
-            if (audio_st)
+            if (audioStream)
                 aqsize = audioq.get_size();
-            if (video_st)
+            if (videoStream)
                 vqsize = videoq.get_size();
-            if (subtitle_st)
+            if (subTitleStream)
                 sqsize = subtitleq.get_size();
             av_diff = 0;
-            if (audio_st && video_st)
+            if (audioStream && videoStream)
                 av_diff = audclk.get() - vidclk.get();
-            else if (video_st)
+            else if (videoStream)
                 av_diff = get_master_clock(is) - vidclk.get();
-            else if (audio_st)
+            else if (audioStream)
                 av_diff = get_master_clock(is) - audclk.get();
             / *av_log(NULL, AV_LOG_INFO,
                    "%7.2f %s:%7.3f fd=%4d aq=%5dKB vq=%5dKB sq=%5dB f=%"PRId64"/%"PRId64"   \r",
                    get_master_clock(is),
-                   (audio_st && video_st) ? "A-V" : (video_st ? "M-V" : (audio_st ? "M-A" : "   ")),
+                   (audioStream && videoStream) ? "A-V" : (videoStream ? "M-V" : (audioStream ? "M-A" : "   ")),
                    av_diff,
-                   frame_drops_early + frame_drops_late,
+                   frameDropsEarly + frameDropsLate,
                    aqsize / 1024,
                    vqsize / 1024,
                    sqsize,
-                   video_st ? viddec.avctx->pts_correction_num_faulty_dts : 0,
-                   video_st ? viddec.avctx->pts_correction_num_faulty_pts : 0);* /
+                   videoStream ? viddec.avctx->pts_correction_num_faulty_dts : 0,
+                   videoStream ? viddec.avctx->pts_correction_num_faulty_pts : 0);* /
             fflush(stdout);
             last_time = cur_time;
         }
@@ -2628,7 +2599,7 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
 
     const auto Settings = GetDefault<UFFMPEGMediaSettings>();
 
-    int got_picture = viddec->decode_frame(frame, NULL);
+    int got_picture = viddec->DecodeFrame(frame, NULL);
 
     if (got_picture < 0)
         return -1;
@@ -2639,7 +2610,7 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
             SetRate(CurrentRate);
         }
 
-        if (hwaccel_retrieve_data && frame->format == hwaccel_pix_fmt) {
+        if (hwaccel_retrieve_data && frame->format == hwAccelPixFmt) {
             int err = hwaccel_retrieve_data(video_ctx, frame);
             if (err < 0) {
                 av_frame_unref(frame);
@@ -2650,19 +2621,19 @@ int FFFMPEGMediaTracks::GetVideoFrame(AVFrame *frame) {
         double dpts = NAN;
 
         if (frame->pts != AV_NOPTS_VALUE)
-            dpts = av_q2d(video_st->time_base) * frame->pts;
+            dpts = av_q2d(videoStream->time_base) * frame->pts;
 
-        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(ic, video_st, frame);
+        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(FormatContext, videoStream, frame);
 
 
-        if ((Settings->AllowFrameDrop && get_master_sync_type() != ESynchronizationType::VideoMaster)) {
+        if ((Settings->AllowFrameDrop && getMasterSyncType() != ESynchronizationType::VideoMaster)) {
             if (frame->pts != AV_NOPTS_VALUE) {
                 double diff = dpts - GetMasterClock();
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
                     diff /*- frame_last_filter_delay*/ < 0 &&
-                    viddec->get_pkt_serial() == vidclk.get_serial() &&
-                    videoq.get_nb_packets()) {
-                    frame_drops_early++;
+                    viddec->GetPktSerial() == vidclk.GetSerial() &&
+                    videoq.GetNumPackets()) {
+                    frameDropsEarly++;
                     av_frame_unref(frame);
                     got_picture = 0;
                 }
@@ -2679,8 +2650,8 @@ int FFFMPEGMediaTracks::VideoThread() {
     double pts;
     double duration;
     int ret;
-    AVRational tb = video_st->time_base;
-    AVRational frame_rate = av_guess_frame_rate(ic, video_st, NULL);
+    AVRational tb = videoStream->time_base;
+    AVRational frame_rate = av_guess_frame_rate(FormatContext, videoStream, NULL);
 
     if (!frame) {
         return AVERROR(ENOMEM);
@@ -2697,7 +2668,7 @@ int FFFMPEGMediaTracks::VideoThread() {
 
         duration = (frame_rate.num && frame_rate.den ? av_q2d({ frame_rate.den, frame_rate.num }) : 0);
         pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
-        pictq.queue_picture(frame, pts, duration, frame->pkt_pos, viddec->get_pkt_serial());
+        pictq.QueuePicture(frame, pts, duration, frame->pkt_pos, viddec->GetPktSerial());
         av_frame_unref(frame);
 
         if (ret < 0) {
@@ -2711,7 +2682,7 @@ int FFFMPEGMediaTracks::VideoThread() {
 }
 
 
-int FFFMPEGMediaTracks::hwaccel_retrieve_data_cb(AVCodecContext *avctx, AVFrame *input) {
+int FFFMPEGMediaTracks::HWAccelRetrieveDataCallback(AVCodecContext *avctx, AVFrame *input) {
     FFFMPEGMediaTracks *ist = (FFFMPEGMediaTracks*)avctx->opaque;
     AVFrame *output = NULL;
     //enum AVPixelFormat output_format = ist->hwaccel_output_format;

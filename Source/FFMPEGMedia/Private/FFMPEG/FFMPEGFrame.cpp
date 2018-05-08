@@ -10,92 +10,92 @@ FFMPEGFrame::FFMPEGFrame()
     width = 0;
     height = 0;
     format = 0;    
-    uploaded = 0;
-    flip_v = 0;
+    uploaded = false;
+    flip_v = false;
     sub = {0};
 }
 
 FFMPEGFrame::~FFMPEGFrame()
 {
-    destroy();
+    Destroy();
 }
 
-int FFMPEGFrame::init () {
-    destroy();
+int FFMPEGFrame::Init () {
+    Destroy();
     frame = av_frame_alloc();
     return frame == 0? 0: 1;
 }
 
-void FFMPEGFrame::destroy() {
+void FFMPEGFrame::Destroy() {
     if (frame != NULL) {
-        unref();
+        UnRef();
         av_frame_free(&frame);
     }
     frame = NULL;
 }
 
-void FFMPEGFrame::unref() {
+void FFMPEGFrame::UnRef() {
     if ( frame != NULL) {
         av_frame_unref(frame);
         avsubtitle_free(&sub);
     }
 }
 
-int FFMPEGFrame::get_serial() {
+int FFMPEGFrame::GetSerial() {
     return serial;
 }
 
-int64_t FFMPEGFrame::get_pos() {
+int64_t FFMPEGFrame::GetPos() {
     return pos;
 }
 
-double FFMPEGFrame::get_pts() {
+double FFMPEGFrame::GetPts() {
     return pts;
 
 }
 
-double FFMPEGFrame::get_duration() {
+double FFMPEGFrame::GetDuration() {
     return duration;
 }
 
-AVFrame* FFMPEGFrame::get_frame() {
+AVFrame* FFMPEGFrame::GetFrame() {
     return frame;
 }
 
-int FFMPEGFrame::get_width() {
+int FFMPEGFrame::GetWidth() {
     return width;
 }
 
-int FFMPEGFrame::get_height() {
+int FFMPEGFrame::GetHeight() {
     return height;
 }
 
-int FFMPEGFrame::get_format() {
+int FFMPEGFrame::GetFormat() {
     return format;
 }
 
-AVRational FFMPEGFrame::get_sar() {
+AVRational FFMPEGFrame::GetSar() {
     return sar;
 }
 
-int FFMPEGFrame::get_uploaded() {
+bool FFMPEGFrame::IsUploaded() {
     return uploaded;
 }
 
-int FFMPEGFrame::get_flip_v() {
+bool FFMPEGFrame::IsVerticalFlip() {
     return flip_v;
 }
 
-AVSubtitle& FFMPEGFrame::get_sub() {
+AVSubtitle& FFMPEGFrame::GetSub() {
     return sub;
 }
 
-double FFMPEGFrame::get_difference(FFMPEGFrame* nextvp, double max) {
+double FFMPEGFrame::GetDifference(FFMPEGFrame* nextvp, double max) {
 
     if (serial == nextvp->serial) {
         double duration = nextvp->pts - pts;
         if (isnan(duration) || duration <= 0 || duration > max)
-            return get_duration();
+            return GetDuration();
         else
             return duration;
     }
@@ -104,7 +104,7 @@ double FFMPEGFrame::get_difference(FFMPEGFrame* nextvp, double max) {
     }
 }
 
-void FFMPEGFrame::update_frame(AVFrame* src_frame, double pts, double duration, int64_t pos, int serial) {
+void FFMPEGFrame::UpdateFrame(AVFrame* src_frame, double pts, double duration, int64_t pos, int serial) {
     this->sar = src_frame->sample_aspect_ratio;
     this->uploaded = 0;
     
@@ -119,40 +119,40 @@ void FFMPEGFrame::update_frame(AVFrame* src_frame, double pts, double duration, 
 }
 
 
-void FFMPEGFrame::update_size(FFMPEGFrame *vp) {
+void FFMPEGFrame::UpdateSize(FFMPEGFrame *vp) {
     width = vp->width;
     height = vp->height;
 }
 
-void FFMPEGFrame::set_pts(double pts) {
+void FFMPEGFrame::SetPts(double pts) {
     this->pts = pts;
 }
 
-void FFMPEGFrame::set_serial(int serial) {
-    this->serial = serial;
+void FFMPEGFrame::SetSerial(int s) {
+    this->serial = s;
 }
 
-void FFMPEGFrame::set_width(int width) {
-    this->width = width;
+void FFMPEGFrame::SetWidth(int w) {
+    this->width = w;
 }
 
-void FFMPEGFrame::set_height(int height) {
-    this->height = height;
+void FFMPEGFrame::SetHeight(int h) {
+    this->height = h;
 }
 
-void FFMPEGFrame::set_uploaded(int u) {
+void FFMPEGFrame::SetUploaded(bool u) {
     this->uploaded = u;
 }
 
-void FFMPEGFrame::set_flip_v(int fv) {
+void FFMPEGFrame::SetVerticalFlip(bool fv) {
     this->flip_v = fv;
 }
 
-void FFMPEGFrame::set_pos(int64_t pos) {
-    this->pos = pos;
+void FFMPEGFrame::SetPos(int64_t p) {
+    this->pos = p;
 }
 
-void FFMPEGFrame::set_duration(double duration) {
-    this->duration = duration;
+void FFMPEGFrame::SetDuration(double d) {
+    this->duration = d;
 }
 

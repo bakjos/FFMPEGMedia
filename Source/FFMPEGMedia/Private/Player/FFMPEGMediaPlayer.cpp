@@ -29,8 +29,8 @@ FFFMPEGMediaPlayer::FFFMPEGMediaPlayer(IMediaEventSink& InEventSink)
 {
 	check(Tracks.IsValid());
     
-    io_ctx = nullptr;
-    ic = nullptr;
+    IOContext = nullptr;
+    FormatContext = nullptr;
     stopped = true;
 }
 
@@ -57,17 +57,17 @@ void FFFMPEGMediaPlayer::Close()
 	MediaUrl = FString();
 	Tracks->Shutdown();
 
-    if (ic) {
-        ic->video_codec = NULL;
-        ic->audio_codec = NULL;
-        avformat_close_input(&ic);
-        ic = nullptr;
+    if (FormatContext) {
+        FormatContext->video_codec = NULL;
+        FormatContext->audio_codec = NULL;
+        avformat_close_input(&FormatContext);
+        FormatContext = nullptr;
     }
 
-    if (io_ctx) {
-        av_free(io_ctx->buffer);
-        av_free(io_ctx);
-        io_ctx = nullptr;
+    if (IOContext) {
+        av_free(IOContext->buffer);
+        av_free(IOContext);
+        IOContext = nullptr;
     }
 
 	// notify listeners
@@ -183,21 +183,7 @@ void FFFMPEGMediaPlayer::TickFetch(FTimespan DeltaTime, FTimespan Timecode)
 
 	if (TrackSelectionChanged)
 	{
-		/*/// less than windows 10, seem to be a problem switching stream
-		if (!FWindowsPlatformMisc::VerifyWindowsVersion(10, 0) / * Anything < Windows 10.0 * /)
-		{
-			const auto Settings = GetDefault<UFFMPEGMediaSettings>();
-			check(Settings != nullptr);
-
-			Session->Initialize(Settings->LowLatency);
-			Tracks->ReInitialize();
-		}
-	
-		if (!Tracks->IsInitialized() / *|| !Session->SetTopology(Tracks->CreateTopology(), Tracks->GetDuration())* /)
-		{
-			Session->Shutdown();
-			EventSink.ReceiveMediaEvent(EMediaEvent::MediaOpenFailed);
-		}*/
+		
 	}
 
 	if (MediaSourceChanged || TrackSelectionChanged)
@@ -244,32 +230,21 @@ bool FFFMPEGMediaPlayer::InitializePlayer(const TSharedPtr<FArchive, ESPMode::Th
 	
 	MediaUrl = Url;
 
+    AVFormatContext* context = ReadContext(Archive, Url, Precache);
+    if (context) {
+        Tracks->Initialize(context, Url);
+        return true;
+    }
 
-	// initialize presentation on a separate thread
-	const EAsyncExecution Execution = Precache ? EAsyncExecution::Thread : EAsyncExecution::ThreadPool;
-
-	Async<void>(Execution, [this, Archive, Url, Precache, TracksPtr = TWeakPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe>(Tracks)]()
-	{
-		TSharedPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe> PinnedTracks = TracksPtr.Pin();
-
-		if (PinnedTracks.IsValid())
-		{
-			AVFormatContext* context  = ReadContext(Archive, Url, Precache);
-            if ( context ) {
- 			    PinnedTracks->Initialize(context, Url);
-            }
-		}
-	});
-
-	return true;
+	return false;
 }
 
-int FFFMPEGMediaPlayer::decode_interrupt_cb(void *ctx) {
+int FFFMPEGMediaPlayer::DecodeInterruptCallback(void *ctx) {
     FFFMPEGMediaPlayer* player = static_cast<FFFMPEGMediaPlayer*>(ctx);
     return player->stopped?1:0;
 }
 
-int FFFMPEGMediaPlayer::read_stream(void* opaque, uint8_t* buf, int buf_size) {
+int FFFMPEGMediaPlayer::ReadtStreamCallback(void* opaque, uint8_t* buf, int buf_size) {
     FFFMPEGMediaPlayer* player = static_cast<FFFMPEGMediaPlayer*>(opaque);
     int64 Position =  player->CurrentArchive->Tell();
     int64 Size =  player->CurrentArchive->TotalSize();
@@ -293,7 +268,7 @@ int FFFMPEGMediaPlayer::read_stream(void* opaque, uint8_t* buf, int buf_size) {
     return BytesToRead;
 }
 
-int64_t FFFMPEGMediaPlayer::seek_stream(void *opaque, int64_t offset, int whence) {
+int64_t FFFMPEGMediaPlayer::SeekStreamCallback(void *opaque, int64_t offset, int whence) {
     FFFMPEGMediaPlayer* player = static_cast<FFFMPEGMediaPlayer*>(opaque);
     if (whence == AVSEEK_SIZE) {
         return player->CurrentArchive->TotalSize();
@@ -310,12 +285,12 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
 
     
 
-    ic = avformat_alloc_context();
+    FormatContext = avformat_alloc_context();
 
     stopped = false;
 
-    ic->interrupt_callback.callback = decode_interrupt_cb;
-    ic->interrupt_callback.opaque = this;
+    FormatContext->interrupt_callback.callback = DecodeInterruptCallback;
+    FormatContext->interrupt_callback.opaque = this;
 
     if (!av_dict_get(format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
@@ -326,17 +301,17 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
         if (Url.StartsWith(TEXT("file://")))
         {
             const TCHAR* FilePath = &Url[7];
-            err = avformat_open_input(&ic, TCHAR_TO_UTF8(FilePath), NULL, &format_opts);
+            err = avformat_open_input(&FormatContext, TCHAR_TO_UTF8(FilePath), NULL, &format_opts);
         } else {
-            err = avformat_open_input(&ic, TCHAR_TO_UTF8(*Url), NULL, &format_opts);
+            err = avformat_open_input(&FormatContext, TCHAR_TO_UTF8(*Url), NULL, &format_opts);
         }
     } else {
         CurrentArchive = Archive;
         const int ioBufferSize = 32768;
         unsigned char * ioBuffer = (unsigned char *)av_malloc(ioBufferSize + FF_INPUT_BUFFER_PADDING_SIZE);
-        io_ctx = avio_alloc_context(ioBuffer, ioBufferSize, 0, this, read_stream, NULL, seek_stream);
-        ic->pb = io_ctx;
-        err = avformat_open_input(&ic, "InMemoryFile", NULL, &format_opts);
+        IOContext = avio_alloc_context(ioBuffer, ioBufferSize, 0, this, ReadtStreamCallback, NULL, SeekStreamCallback);
+        FormatContext->pb = IOContext;
+        err = avformat_open_input(&FormatContext, "InMemoryFile", NULL, &format_opts);
     }
 
     if (err < 0) {
@@ -353,12 +328,12 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
             EventSink.ReceiveMediaEvent(EMediaEvent::MediaOpenFailed);
         });
 
-        if ( ic ) {
-            avformat_close_input(&ic);
-            ic = nullptr;
+        if ( FormatContext ) {
+            avformat_close_input(&FormatContext);
+            FormatContext = nullptr;
         }
         stopped = true;
-        return ic;
+        return FormatContext;
     }
 
     if (scan_all_pmts_set)
@@ -371,27 +346,24 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
         PlayerTasks.Enqueue([=]() {
             EventSink.ReceiveMediaEvent(EMediaEvent::MediaOpenFailed);
         });
-        if ( ic ) {
-            avformat_close_input(&ic);
-            ic = nullptr;
+        if ( FormatContext ) {
+            avformat_close_input(&FormatContext);
+            FormatContext = nullptr;
         }
         stopped = true;
-        return ic;
+        return FormatContext;
     }
 
     av_dict_free(&format_opts);
 
 
-    av_format_inject_global_side_data(ic);
+    av_format_inject_global_side_data(FormatContext);
 
-    err = avformat_find_stream_info(ic, NULL);
+    err = avformat_find_stream_info(FormatContext, NULL);
 
-    if (ic->pb)
-        ic->pb->eof_reached = 0; // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
+    if (FormatContext->pb)
+        FormatContext->pb->eof_reached = 0; // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
 
-    //int64_t duration = ic->duration + (ic->duration <= INT64_MAX - 5000 ? 5000 : 0);
-    
-    
 
-    return ic;
+    return FormatContext;
 }

@@ -94,17 +94,22 @@ private:
 	TSharedPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe> Tracks;
 
     /** FFMPEG Callbacks */
-    static int decode_interrupt_cb(void *ctx);
-    static int read_stream(void* ptr, uint8_t* buf, int buf_size);
-    static int64_t seek_stream(void *opaque, int64_t offset, int whence);
+    /** Returns 1 when we would like to stop the application */
+    static int DecodeInterruptCallback(void *ctx);
+
+    /** This is called when it's reading an Archive instead of an url*/
+    static int ReadtStreamCallback(void* ptr, uint8_t* buf, int buf_size);
+
+    /** This is called when it's reading an Archive instead of an url*/
+    static int64_t SeekStreamCallback(void *opaque, int64_t offset, int whence);
 
     /** FFMPEG Functions */
 
     AVFormatContext*  ReadContext(const TSharedPtr<FArchive, ESPMode::ThreadSafe>& Archive, const FString& Url, bool Precache);
 
     /** FFMPEG Structs */
-    AVFormatContext     *ic;
-    AVIOContext         *io_ctx;        
+    AVFormatContext     *FormatContext;
+    AVIOContext         *IOContext;        
     bool                 stopped;
 
     TSharedPtr<FArchive, ESPMode::ThreadSafe> CurrentArchive;
