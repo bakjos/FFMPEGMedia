@@ -64,8 +64,9 @@ public class FFMPEGMedia : ModuleRules
 			string BinariesPath = Path.Combine(Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "bin"), "vs"), PlatformString);
 			foreach (string dll in dlls)
 			{
-				PublicDelayLoadDLLs.Add(Path.Combine(BinariesPath, dll));
-				CopyToBinaries(Path.Combine(BinariesPath, dll), Target);
+				PublicDelayLoadDLLs.Add(dll);
+				//CopyToBinaries(Path.Combine(BinariesPath, dll), Target);
+				RuntimeDependencies.Add(Path.Combine(BinariesPath, dll), StagedFileType.NonUFS);
 			}
 
 		}
@@ -80,11 +81,10 @@ public class FFMPEGMedia : ModuleRules
             foreach (string lib in libs)
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
-                PublicDelayLoadDLLs.Add(Path.Combine(LibrariesPath, lib));
-                CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
+                PublicDelayLoadDLLs.Add(lib);
+                //CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
+	            RuntimeDependencies.Add(Path.Combine(LibrariesPath, lib), StagedFileType.NonUFS);
             }
-
-			
 
 		}
 
@@ -117,6 +117,7 @@ public class FFMPEGMedia : ModuleRules
 				"MediaUtils",
 				"RenderCore",
 				"FFMPEGMediaFactory",
+				"Projects",
 			});
 
 		PrivateIncludePathModuleNames.AddRange(
