@@ -17,4 +17,4 @@ A plugin that let's you use the FFMPEG library as media player
 3. Follow the steps to [play a video tutorial](https://docs.unrealengine.com/en-us/Engine/MediaFramework/HowTo/FileMediaSource) but insead of using the automatic player, choose the FFMPEGPlayer inside the players overrides for the step 5.
 
 
-![Player Overrrides](https://github.com/bakjos/FFMPEGMedia/blob/master/docs/mediatype.png)
+![Player Overrrides](https://github.com/bakjos/FFMPEGMedia/raw/master/docs/mediatype.png)

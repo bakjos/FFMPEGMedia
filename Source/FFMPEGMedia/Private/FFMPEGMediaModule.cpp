@@ -111,7 +111,7 @@ public:
             return;
 
         char buffer[2048];
-#ifdef PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS
         vsprintf_s(buffer, 2048, format, arglist);
 #else
         vsnprintf(buffer, 2048, format, arglist);
@@ -235,7 +235,7 @@ protected:
         extension = TEXT(".dylib");
         prefix = "lib";
         separator = ".";
-#elif PLATFORM_WINDOWS
+#elif PLATFORM_WIN/Users/giovannygutierrez/projects/FacebookUpload/Plugins/FFMPEGMedia/Source/FFMPEGMedia/Private/Player/FFMPEGMediaOverlaySample.hDOWS
         extension = TEXT(".dll");
         prefix = "";
         separator = "-";

@@ -81,7 +81,7 @@ public class FFMPEGMedia : ModuleRules
             foreach (string lib in libs)
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
-                PublicDelayLoadDLLs.Add(lib);
+                PublicDelayLoadDLLs.Add(Path.Combine(LibrariesPath, lib));
                 //CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
 	            RuntimeDependencies.Add(Path.Combine(LibrariesPath, lib), StagedFileType.NonUFS);
             }
