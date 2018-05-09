@@ -235,7 +235,7 @@ protected:
         extension = TEXT(".dylib");
         prefix = "lib";
         separator = ".";
-#elif PLATFORM_WIN/Users/giovannygutierrez/projects/FacebookUpload/Plugins/FFMPEGMedia/Source/FFMPEGMedia/Private/Player/FFMPEGMediaOverlaySample.hDOWS
+#elif PLATFORM_WINDOWS
         extension = TEXT(".dll");
         prefix = "";
         separator = "-";
