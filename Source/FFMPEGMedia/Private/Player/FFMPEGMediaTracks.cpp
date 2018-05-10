@@ -1343,8 +1343,8 @@ TArray<const AVCodec*>  FFFMPEGMediaTracks::FindDecoders(int codecId, bool hwacc
         TArray<const AVCodec*> tmp;
 
         candidates.Sort([](const AVCodec a, const AVCodec b) {
-            std::string aname = a.name;
-            std::string bname = b.name;
+            FString aname = a.name;
+            FString bname = b.name;
             return aname < bname;
         });
 
