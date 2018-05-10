@@ -32,16 +32,6 @@ struct AVBufferRef;
 struct AVCodecContext;
 class FFMPEGDecoder;
 
-/*
-enum HWAccelID {
-    HWACCEL_NONE = 0,
-    HWACCEL_AUTO,
-    HWACCEL_GENERIC,
-    HWACCEL_VIDEOTOOLBOX,
-    HWACCEL_CUVID,
-};
-*/
-
 
 /**
  * Track collection for Windows Media Foundation based media players.
@@ -386,11 +376,11 @@ private:
     /** Check if a codec have hardware acceleration options */
     static bool isHwAccel(const AVCodec* codec);
 
+    /** Check if a codec have hardware acceleration options */
+    static TArray<const AVCodec*> FindDecoders(int codecId, bool hwaccell);
+
     /** Find the better accelerated device type for the given codec*/
     static enum AVHWDeviceType FindBetterDeviceType(const AVCodec* codec, int& lastSelection);
-
-    /** Find a decoder usiing the given AVCodecID*/
-    static const AVCodec* FindDecoder(int codecId, bool hwaccell);
 
     /** Callback for ffmpeg to return the right format when is hardware accelerated*/
     static enum AVPixelFormat GetFormatCallback(AVCodecContext *s, const enum AVPixelFormat *pix_fmts);

@@ -1323,6 +1323,63 @@ bool FFFMPEGMediaTracks::isHwAccel(const AVCodec* codec) {
      return ret;
 }
 
+TArray<const AVCodec*>  FFFMPEGMediaTracks::FindDecoders(int codecId, bool hwaccell) {
+   
+    TArray<const AVCodec*> codecs;
+    TArray<const AVCodec*> candidates;
+
+    void* iter = NULL;
+    const AVCodec* codec = av_codec_iterate(&iter);
+    
+    while (codec) {
+        if (codec->id == codecId && av_codec_is_decoder(codec)) {
+            candidates.Add(codec);
+        }
+        codec = av_codec_iterate(&iter);
+    }
+
+    if (hwaccell) {
+
+        TArray<const AVCodec*> tmp;
+
+        candidates.Sort([](const AVCodec a, const AVCodec b) {
+            std::string aname = a.name;
+            std::string bname = b.name;
+            return aname < bname;
+        });
+
+        for ( int i = 0; i < candidates.Num(); i++) {
+            FString name = candidates[i]->name;
+            if ( name.Contains(TEXT("cuda"))  || name.Contains(TEXT("cuvid"))) {
+                tmp.Add((candidates[i]));
+                candidates.RemoveAt(i);
+                i--;
+            }
+        }
+        
+
+        tmp.Insert(candidates, tmp.Num()); 
+       
+        for (const AVCodec* codec : tmp) {
+            if (isHwAccel(codec)) {
+                codecs.Add(codec);
+            }
+        }
+    }
+
+    if (candidates.Num() > 0) {
+        if (!hwaccell) {
+            for (const AVCodec* codec : candidates) {
+                if (!isHwAccel(codec)) {
+                    codecs.Add(codec);
+                }
+            }
+        }
+    }
+
+    return codecs;
+}
+
 AVHWDeviceType FFFMPEGMediaTracks::FindBetterDeviceType(const AVCodec* codec, int& lastSelection) {
     const AVCodecHWConfig *config;
     enum AVHWDeviceType type;
@@ -1375,42 +1432,6 @@ AVHWDeviceType FFFMPEGMediaTracks::FindBetterDeviceType(const AVCodec* codec, in
     return AV_HWDEVICE_TYPE_NONE;
 }
 
-const AVCodec* FFFMPEGMediaTracks::FindDecoder(int codecId, bool hwaccell) {
-    void* iter = NULL;
-    
-    const AVCodec* codec = av_codec_iterate(&iter);
-    TArray<const AVCodec*> candidates;
-    while (codec) {
-        if (codec->id == codecId && av_codec_is_decoder(codec)) {
-            candidates.Add(codec);
-        }
-        codec = av_codec_iterate(&iter);
-    }
-    if (hwaccell) {
-        for (const AVCodec* codec : candidates) {
-            if (isHwAccel(codec)) {
-                return codec;
-            }
-        }
-    }
-
-    if (codec == NULL && candidates.Num() > 0) {
-        if (!hwaccell) {
-            for (const AVCodec* codec : candidates) {
-                if (!isHwAccel(codec)) {
-                    return codec;
-                }
-            }
-        }
-        else {
-            return NULL;
-        }
-
-        return candidates[0];
-    }
-
-    return codec;
-}
 
 int FFFMPEGMediaTracks::StreamHasEnoughPackets(AVStream *st, int stream_id, FFMPEGPacketQueue *queue) {
     return stream_id < 0 ||
@@ -1489,43 +1510,59 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         return ret;
     }
     avctx->pkt_timebase = FormatContext->streams[stream_index]->time_base;
-    
-    avctx->opaque = this;
-    avctx->get_format = GetFormatCallback;
-    avctx->thread_safe_callbacks = 1;
+   
 
     if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-        codec = FindDecoder(avctx->codec_id, true);
-        if (!codec) {
-            codec = avcodec_find_decoder(avctx->codec_id);
-        } else {
-            
-            AVBufferRef *device_ref = NULL;
-            int lastSelection = 0;
-            while ( lastSelection >= 0) {
-                enum AVHWDeviceType type = FindBetterDeviceType(codec, lastSelection);
-                ret = av_hwdevice_ctx_create(&device_ref, type, NULL, NULL, 0);
-                if (ret < 0) {
-                    hw_device_ctx = NULL;
-                    hwAccelDeviceType = AV_HWDEVICE_TYPE_NONE;
-                    hwaccel_retrieve_data = nullptr;
-                }
-                else {
-                    hw_device_ctx = device_ref;
-                    avctx->hw_device_ctx = av_buffer_ref(device_ref);
+        TArray<const AVCodec*> hwCodecs = FindDecoders(avctx->codec_id, true);
+        codec = NULL;
 
-                    const char* type_name = av_hwdevice_get_type_name(type);
-                    UE_LOG(LogFFMPEGMedia, Display, TEXT("Using hardware context type: %s"), UTF8_TO_TCHAR(type_name));
+        for (const AVCodec* hwCodec : hwCodecs) {
+            AVCodecContext* avctx2 = avcodec_alloc_context3(NULL);
+            avcodec_parameters_to_context(avctx2, FormatContext->streams[stream_index]->codecpar);
+            if (avcodec_open2(avctx2, hwCodec, NULL) >= 0) {
+                AVBufferRef *device_ref = NULL;
+                int lastSelection = 0;
+                while (lastSelection >= 0) {
+                    enum AVHWDeviceType type = FindBetterDeviceType(hwCodec, lastSelection);
+                    ret = av_hwdevice_ctx_create(&device_ref, type, NULL, NULL, 0);
+                    if (ret < 0) {
+                        hw_device_ctx = NULL;
+                        hwAccelDeviceType = AV_HWDEVICE_TYPE_NONE;
+                        hwaccel_retrieve_data = nullptr;
+                    }
+                    else {
+                        hw_device_ctx = device_ref;
+                        avctx->hw_device_ctx = av_buffer_ref(device_ref);
 
-                    hwAccelDeviceType = type;
-                    hwaccel_retrieve_data = HWAccelRetrieveDataCallback;
-                    
-                    break;
+                        const char* type_name = av_hwdevice_get_type_name(type);
+                        UE_LOG(LogFFMPEGMedia, Display, TEXT("Using hardware context type: %s"), UTF8_TO_TCHAR(type_name));
+
+                        hwAccelDeviceType = type;
+                        hwaccel_retrieve_data = HWAccelRetrieveDataCallback;
+                        codec = hwCodec;
+
+                        avctx->opaque = this;
+                        avctx->get_format = GetFormatCallback;
+                        avctx->thread_safe_callbacks = 1;
+
+                        break;
+                    }
                 }
             }
+            avcodec_free_context(&avctx2);
+            if (codec) break;
+        }
+        if (!codec) {
+            codec = avcodec_find_decoder(avctx->codec_id);
         }
     } else {
         codec = avcodec_find_decoder(avctx->codec_id);
+    }
+
+    if ( !codec) {
+        const AVCodecDescriptor * desc = avcodec_descriptor_get(avctx->codec_id);
+        UE_LOG(LogFFMPEGMedia, Error, TEXT("coudn't find a decoder for %s"), UTF8_TO_TCHAR(desc->long_name));
+        return -1;
     }
 
     avctx->codec_id = codec->id;
@@ -2704,13 +2741,15 @@ int FFFMPEGMediaTracks::HWAccelRetrieveDataCallback(AVCodecContext *avctx, AVFra
     if (err < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to transfer data to "
             "output frame: %d.\n", err);
-        goto fail;
+        av_frame_free(&output);
+        return err;
     }
 
     err = av_frame_copy_props(output, input);
     if (err < 0) {
         av_frame_unref(output);
-        goto fail;
+        av_frame_free(&output);
+        return err;
     }
 
     av_frame_unref(input);
@@ -2719,9 +2758,6 @@ int FFFMPEGMediaTracks::HWAccelRetrieveDataCallback(AVCodecContext *avctx, AVFra
 
     return 0;
 
-fail:
-    av_frame_free(&output);
-    return err;
 }
 
 
