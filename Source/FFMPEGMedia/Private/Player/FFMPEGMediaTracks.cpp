@@ -261,6 +261,8 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
         return ;
     }
 
+    realtime = IsRealtime(ic);
+
     if (subpq.Init(&subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0) {
         Shutdown();
         CurrentState = EMediaState::Error;
@@ -2091,7 +2093,12 @@ int FFFMPEGMediaTracks::ReadThread() {
                 bPrerolled = false;
             }
         }
-        ret = av_read_frame(FormatContext, pkt);
+        try {
+            ret = av_read_frame(FormatContext, pkt);
+		} catch(...) {
+		    ret = -1;
+		}
+
         if (ret < 0) {
             if ((ret == AVERROR_EOF || avio_feof(FormatContext->pb)) && !eof) {
                 if (videoStreamIdx >= 0)
@@ -2758,6 +2765,21 @@ int FFFMPEGMediaTracks::HWAccelRetrieveDataCallback(AVCodecContext *avctx, AVFra
 
     return 0;
 
+}
+
+int FFFMPEGMediaTracks::IsRealtime(AVFormatContext *s) {
+	if (!strcmp(s->iformat->name, "rtp")
+		|| !strcmp(s->iformat->name, "rtsp")
+		|| !strcmp(s->iformat->name, "sdp")
+		)
+		return 1;
+
+	if (s->pb && (!strncmp(s->url, "rtp:", 4)
+		|| !strncmp(s->url, "udp:", 4)
+		)
+		)
+		return 1;
+	return 0;
 }
 
 

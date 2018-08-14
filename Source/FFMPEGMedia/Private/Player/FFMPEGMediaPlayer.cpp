@@ -230,13 +230,23 @@ bool FFFMPEGMediaPlayer::InitializePlayer(const TSharedPtr<FArchive, ESPMode::Th
 	
 	MediaUrl = Url;
 
-    AVFormatContext* context = ReadContext(Archive, Url, Precache);
-    if (context) {
-        Tracks->Initialize(context, Url);
-        return true;
-    }
+	// initialize presentation on a separate thread
+	const EAsyncExecution Execution = Precache ? EAsyncExecution::Thread : EAsyncExecution::ThreadPool;
 
-	return false;
+	Async<void>(Execution, [Archive, Url, Precache, TracksPtr = TWeakPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe>(Tracks), ThisPtr=this]()
+	{
+		TSharedPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe> PinnedTracks = TracksPtr.Pin();
+
+		if (PinnedTracks.IsValid() )
+		{
+			AVFormatContext* context = ThisPtr->ReadContext(Archive, Url, Precache);
+			if (context) {
+				PinnedTracks->Initialize(context, Url);
+			}
+		}
+	});
+
+	return true;
 }
 
 int FFFMPEGMediaPlayer::DecodeInterruptCallback(void *ctx) {
