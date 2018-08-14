@@ -6,7 +6,7 @@ A plugin that let's you use the FFMPEG library as media player
 
 ## Features:
    - Works on Windows and Mac
-   - Support for harware accelerated codecs
+   - Support for hardware accelerated codecs
    - Support for videos with alpha   
 
 ## How to use
