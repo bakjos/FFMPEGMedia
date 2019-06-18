@@ -107,9 +107,6 @@ public:
 
     static void  log_callback(void*, int level , const char* format, va_list arglist ) {
 
-        if ( level > AV_LOG_INFO)
-            return;
-
         char buffer[2048];
 #if PLATFORM_WINDOWS
         vsprintf_s(buffer, 2048, format, arglist);

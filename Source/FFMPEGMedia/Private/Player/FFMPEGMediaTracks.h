@@ -459,6 +459,7 @@ private:
     void UpdateVideoPts( double pts, int64_t pos, int serial);
     void CheckExternalClockSpeed();
     double GetMasterClock();
+    static int  IsRealtime(AVFormatContext *s);
 
     struct SwsContext *imgConvertCtx;
     
