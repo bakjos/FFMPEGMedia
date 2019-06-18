@@ -5,8 +5,8 @@
 
 UFFMPEGMediaSettings::UFFMPEGMediaSettings()
     : UseInfiniteBuffer (false)
-    , UseHardwareAcceleratedCodecs (true)
-    , AllowFrameDrop (true)
+	, AllowFrameDrop(true)
+	, UseHardwareAcceleratedCodecs (true)
     , DisableAudio (false)
     , SpeedUpTricks (false)
     , AudioThreads(0)
