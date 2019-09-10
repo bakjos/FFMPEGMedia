@@ -76,12 +76,12 @@ public class FFMPEGMedia : ModuleRules
 			string LibrariesPath = Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "osx");
 
 			System.Console.WriteLine("... LibrariesPath -> " + LibrariesPath);
-            
+
             string[] libs = {"libavcodec.58.dylib","libavdevice.58.dylib", "libavfilter.7.dylib", "libavformat.58.dylib", "libavutil.56.dylib", "libswresample.3.dylib", "libswscale.5.dylib", "libpostproc.55.dylib"};
             foreach (string lib in libs)
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
-                PublicDelayLoadDLLs.Add(Path.Combine(LibrariesPath, lib));
+                //PublicDelayLoadDLLs.Add(Path.Combine(LibrariesPath, lib));
                 //CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
 	            RuntimeDependencies.Add(Path.Combine(LibrariesPath, lib), StagedFileType.NonUFS);
             }
@@ -103,7 +103,7 @@ public class FFMPEGMedia : ModuleRules
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		OptimizeCode = CodeOptimization.Never;
 		bEnableExceptions = true;
-		
+
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[] {
 				"Media",
