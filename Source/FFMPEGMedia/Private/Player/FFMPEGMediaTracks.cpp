@@ -261,7 +261,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
         return ;
     }
 
-    realtime = IsRealtime(ic);
+    realtime = IsRealtime(ic) != 0;
 
     if (subpq.Init(&subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0) {
         Shutdown();
