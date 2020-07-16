@@ -42,6 +42,9 @@
             
             <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libswscale.so"
             dst="$S(BuildDir)/libs/armeabi-v7a/libswscale.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libcpufeatures.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libcpufeatures.so" />
         </isArch>
         
         <isArch arch="arm64-v8a">

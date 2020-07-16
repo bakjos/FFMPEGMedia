@@ -1512,6 +1512,16 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         return ret;
     }
     avctx->pkt_timebase = FormatContext->streams[stream_index]->time_base;
+    
+#ifdef UE_BUILD_DEBUG
+    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO ) {
+        UE_LOG(LogFFMPEGMedia, Display, TEXT("Video Codec: %s "), UTF8_TO_TCHAR(avcodec_get_name( avctx->codec_id)));
+    }
+    
+    if (avctx->codec_type == AVMEDIA_TYPE_AUDIO ) {
+        UE_LOG(LogFFMPEGMedia, Display, TEXT("Audio Codec: %s "), UTF8_TO_TCHAR(avcodec_get_name( avctx->codec_id)));
+    }
+#endif
    
 
     if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
