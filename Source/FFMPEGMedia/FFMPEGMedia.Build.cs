@@ -73,8 +73,8 @@ public class FFMPEGMedia : ModuleRules
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			isLibrarySupported = true;
-			string LibrariesPath = Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "osx");
-
+			//string LibrariesPath = Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "osx");
+            string LibrariesPath = "/usr/local/lib";
 			System.Console.WriteLine("... LibrariesPath -> " + LibrariesPath);
 
             string[] libs = {"libavcodec.58.dylib","libavdevice.58.dylib", "libavfilter.7.dylib", "libavformat.58.dylib", "libavutil.56.dylib", "libswresample.3.dylib", "libswscale.5.dylib", "libpostproc.55.dylib"};
@@ -83,10 +83,33 @@ public class FFMPEGMedia : ModuleRules
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
                 //PublicDelayLoadDLLs.Add(Path.Combine(LibrariesPath, lib));
                 //CopyToBinaries(Path.Combine(LibrariesPath, lib), Target);
-	            RuntimeDependencies.Add(Path.Combine(LibrariesPath, lib), StagedFileType.NonUFS);
+	            //RuntimeDependencies.Add(Path.Combine(LibrariesPath, lib), StagedFileType.NonUFS);
             }
 
-		}
+        } else if (Target.Platform == UnrealTargetPlatform.Android) {
+          isLibrarySupported = true;
+          
+          string LibrariesPath =Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "android");
+          string[] Platforms = { "armeabi-v7a", "arm64-v8a", "x86", "x86_64"  };
+          
+          
+          string[] libs = {"libavcodec.so","libavdevice.so", "libavfilter.so", "libavformat.so", "libavutil.so", "libswresample.so", "libswscale.so"};
+          
+          System.Console.WriteLine("Architecture: " + Target);
+          
+          
+          foreach (string platform in Platforms)
+          {
+              foreach (string lib in libs)
+              {
+                   PublicAdditionalLibraries.Add(Path.Combine(Path.Combine(LibrariesPath, platform), lib ));
+              }
+          }
+                    
+          string finalPath =  Path.Combine(ModulePath, "FFMPEGMedia_APL.xml");
+          System.Console.WriteLine("... APL Path -> " + finalPath);
+          AdditionalPropertiesForReceipt.Add(new ReceiptProperty("AndroidPlugin", finalPath));
+        }
 
 		if (isLibrarySupported)
 		{

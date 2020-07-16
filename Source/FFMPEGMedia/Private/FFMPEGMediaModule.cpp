@@ -155,7 +155,9 @@ public:
         AVCodecLibrary = LoadLibrary(TEXT("avcodec"), TEXT("58"));
         AVFormatLibrary = LoadLibrary(TEXT("avformat"), TEXT("58"));
         SWScaleLibrary = LoadLibrary(TEXT("swscale"), TEXT("5"));
+#ifndef PLATFORM_ANDROID
         PostProcLibrary = LoadLibrary(TEXT("postproc"), TEXT("55"));
+#endif
         AVFilterLibrary = LoadLibrary(TEXT("avfilter"), TEXT("7"));
         AVDeviceLibrary = LoadLibrary(TEXT("avdevice"), TEXT("58"));
 
@@ -241,9 +243,19 @@ protected:
 #else
         LibDir = FPaths::Combine(*BaseDir, TEXT("ThirdParty/ffmpeg/bin/vs/win32"));
 #endif
+#elif PLATFORM_ANDROID
+       extension = TEXT(".so");
+       prefix = "lib";
+       separator = "";
 #endif
+#ifndef PLATFORM_ANDROID
         if (!LibDir.IsEmpty()) {
-            FString LibraryPath = FPaths::Combine(*LibDir, prefix + name + separator + version + extension);
+           FString LibraryPath = FPaths::Combine(*LibDir, prefix + name + extension);
+#else
+        {
+            FString LibraryPath = prefix + name + separator + version + extension;
+            UE_LOG(LogFFMPEGMedia, Display, TEXT("Loading library from: %s"), *LibraryPath);
+#endif
             return FPlatformProcess::GetDllHandle(*LibraryPath);
         }
         return nullptr;
