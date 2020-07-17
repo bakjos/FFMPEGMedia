@@ -93,18 +93,18 @@ AVSubtitle& FFMPEGFrame::GetSub() {
 double FFMPEGFrame::GetDifference(FFMPEGFrame* nextvp, double max) {
 
     if (serial == nextvp->serial) {
-        double duration = nextvp->pts - pts;
-        if (isnan(duration) || duration <= 0 || duration > max)
+        double duration1 = nextvp->pts - pts;
+        if (isnan(duration1) || duration1 <= 0 || duration1 > max)
             return GetDuration();
         else
-            return duration;
+            return duration1;
     }
     else {
         return 0.0;
     }
 }
 
-void FFMPEGFrame::UpdateFrame(AVFrame* src_frame, double pts, double duration, int64_t pos, int serial) {
+void FFMPEGFrame::UpdateFrame(AVFrame* src_frame, double pts1, double duration1, int64_t pos1, int serial1) {
     this->sar = src_frame->sample_aspect_ratio;
     this->uploaded = 0;
     
@@ -112,10 +112,10 @@ void FFMPEGFrame::UpdateFrame(AVFrame* src_frame, double pts, double duration, i
     this->height = src_frame->height;
     this->format = src_frame->format;
     
-    this->pts = pts;
-    this->duration = duration;
-    this->pos = pos;
-    this->serial = serial;
+    this->pts = pts1;
+    this->duration = duration1;
+    this->pos = pos1;
+    this->serial = serial1;
 }
 
 
@@ -124,8 +124,8 @@ void FFMPEGFrame::UpdateSize(FFMPEGFrame *vp) {
     height = vp->height;
 }
 
-void FFMPEGFrame::SetPts(double pts) {
-    this->pts = pts;
+void FFMPEGFrame::SetPts(double pts1) {
+    this->pts = pts1;
 }
 
 void FFMPEGFrame::SetSerial(int s) {

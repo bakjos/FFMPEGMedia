@@ -7,7 +7,7 @@
 
 #include "IFFMPEGMediaModule.h"
 #include "Core.h"
-#include "IPluginManager.h"
+
 
 #include "IMediaModule.h"
 #include "Modules/ModuleInterface.h"
@@ -19,6 +19,7 @@ extern  "C" {
 }
 
 #include "FFMPEGMediaPlayer.h"
+#include <Interfaces/IPluginManager.h>
 
 
 

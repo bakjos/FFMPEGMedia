@@ -51,25 +51,25 @@ double FFMPEGClock::Get() {
     }
 }
 
-void FFMPEGClock::Set(double pts, int serial) {
+void FFMPEGClock::Set(double pts1, int serial1) {
     double time = av_gettime_relative() / 1000000.0;
-    SetAt(pts, serial, time);
+    SetAt(pts1, serial1, time);
 }
 
-void  FFMPEGClock::SetAt( double pts, int serial, double time) {
-    this->pts = pts;
-    this->last_updated = time;
-    this->pts_drift = this->pts - time;
-    this->serial = serial;
+void  FFMPEGClock::SetAt( double pts1, int serial1, double time1) {
+    this->pts = pts1;
+    this->last_updated = time1;
+    this->pts_drift = this->pts - time1;
+    this->serial = serial1;
 }
 
 void FFMPEGClock::SetPaused(bool p) {
     paused = p;
 }
 
-void FFMPEGClock::SetSpeed(double speed) {
+void FFMPEGClock::SetSpeed(double speed1) {
     Set(Get(), serial);
-    this->speed = speed;
+    this->speed = speed1;
 }
 
 int FFMPEGClock::GetSerial() {

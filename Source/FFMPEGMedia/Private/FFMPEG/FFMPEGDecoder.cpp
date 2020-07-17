@@ -22,10 +22,10 @@ FFMPEGDecoder::~FFMPEGDecoder()
 {
 }
 
-void FFMPEGDecoder::Init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond) {
-    this->avctx = avctx;
-    this->queue = queue;
-    this->empty_queue_cond = empty_queue_cond;
+void FFMPEGDecoder::Init(AVCodecContext *avctx1, FFMPEGPacketQueue *queue1, CondWait *empty_queue_cond1) {
+    this->avctx = avctx1;
+    this->queue = queue1;
+    this->empty_queue_cond = empty_queue_cond1;
     this->start_pts = AV_NOPTS_VALUE;
     this->pkt_serial = -1;
 }
@@ -34,7 +34,7 @@ int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
     int ret = AVERROR(EAGAIN);
 
     for (;;) {
-        AVPacket pkt;
+        AVPacket pkt1;
 
         if (queue->GetSerial() == pkt_serial) {
             do {
@@ -82,16 +82,16 @@ int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
             if (queue->GetNumPackets() == 0)
                 empty_queue_cond->signal();
             if (packet_pending) {
-                av_packet_move_ref(&pkt, &pkt);
+                av_packet_move_ref(&pkt1, &pkt1);
                 packet_pending = false;
             }
             else {
-                if (queue->Get(&pkt, 1, &pkt_serial) < 0)
+                if (queue->Get(&pkt1, 1, &pkt_serial) < 0)
                     return -1;
             }
         } while (queue->GetSerial() != pkt_serial);
 
-        if (FFMPEGPacketQueue::IsFlushPacket(pkt.data)) {
+        if (FFMPEGPacketQueue::IsFlushPacket(pkt1.data)) {
             avcodec_flush_buffers(avctx);
             finished = 0;
             next_pts = start_pts;
@@ -100,26 +100,26 @@ int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
         else {
             if (avctx->codec_type == AVMEDIA_TYPE_SUBTITLE) {
                 int got_frame = 0;
-                ret = avcodec_decode_subtitle2(avctx, sub, &got_frame, &pkt);
+                ret = avcodec_decode_subtitle2(avctx, sub, &got_frame, &pkt1);
                 if (ret < 0) {
                     ret = AVERROR(EAGAIN);
                 }
                 else {
-                    if (got_frame && !pkt.data) {
+                    if (got_frame && !pkt1.data) {
                         packet_pending = 1;
-                        av_packet_move_ref(&pkt, &pkt);
+                        av_packet_move_ref(&pkt1, &pkt1);
                     }
-                    ret = got_frame ? 0 : (pkt.data ? AVERROR(EAGAIN) : AVERROR_EOF);
+                    ret = got_frame ? 0 : (pkt1.data ? AVERROR(EAGAIN) : AVERROR_EOF);
                 }
             }
             else {
-                if (avcodec_send_packet(avctx, &pkt) == AVERROR(EAGAIN)) {
+                if (avcodec_send_packet(avctx, &pkt1) == AVERROR(EAGAIN)) {
                     av_log(avctx, AV_LOG_ERROR, "Receive_frame and send_packet both returned EAGAIN, which is an API violation.\n");
                     packet_pending = 1;
-                    av_packet_move_ref(&pkt, &pkt);
+                    av_packet_move_ref(&pkt1, &pkt1);
                 }
             }
-            av_packet_unref(&pkt);
+            av_packet_unref(&pkt1);
         }
     }
 
@@ -187,12 +187,12 @@ int  FFMPEGDecoder::GetFinished() {
     return finished;
 }
 
-void  FFMPEGDecoder::SetTime ( int64_t start_pts, AVRational  start_pts_tb) {
-    this->start_pts = start_pts;
-    this->start_pts_tb = start_pts_tb;
+void  FFMPEGDecoder::SetTime ( int64_t start_pts1, AVRational  start_pts_tb1) {
+    this->start_pts = start_pts1;
+    this->start_pts_tb = start_pts_tb1;
 }
 
-void  FFMPEGDecoder::SetFinished ( int finished ) {
-    this->finished = finished;
+void  FFMPEGDecoder::SetFinished ( int finished1 ) {
+    this->finished = finished1;
 }
 

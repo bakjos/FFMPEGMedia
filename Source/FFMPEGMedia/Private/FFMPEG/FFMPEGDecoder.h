@@ -29,8 +29,8 @@ public:
     int GetPktSerial();
     int GetFinished();
     
-    void SetTime ( int64_t start_pts, AVRational  start_pts_tb);
-    void SetFinished ( int finished );
+    void SetTime ( int64_t start_pts1, AVRational  start_pts_tb1);
+    void SetFinished ( int finished1 );
 
 private:
     int decoder_reorder_pts;
