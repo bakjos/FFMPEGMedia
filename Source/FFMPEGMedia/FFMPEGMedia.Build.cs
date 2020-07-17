@@ -142,6 +142,17 @@ public class FFMPEGMedia : ModuleRules
 				"FFMPEGMediaFactory",
 				"Projects",
 			});
+            
+        if (Target.Platform == UnrealTargetPlatform.Android)
+        {
+            PrivateDependencyModuleNames.AddRange(
+                new string[]
+                {
+                    "ApplicationCore",
+                    "Launch"
+                }
+            );
+        }
 
 		PrivateIncludePathModuleNames.AddRange(
 			new string[] {

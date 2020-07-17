@@ -1576,6 +1576,10 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
         UE_LOG(LogFFMPEGMedia, Error, TEXT("coudn't find a decoder for %s"), UTF8_TO_TCHAR(desc->long_name));
         return -1;
     }
+    
+    
+    UE_LOG(LogFFMPEGMedia, Display, TEXT("Using codec: %s - %d"), UTF8_TO_TCHAR(codec->name), codec->id);
+    
 
     avctx->codec_id = codec->id;
     if (stream_lowres > codec->max_lowres) {
@@ -1868,7 +1872,10 @@ int FFFMPEGMediaTracks::UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct Sw
     uint8_t* data[4] = { 0 };
     av_image_fill_pointers(data, AV_PIX_FMT_BGRA, frame->height, dataBuffer.GetData(), pitch);
 
-   
+
+#if PLATFORM_ANDROID
+    UE_LOG(LogFFMPEGMedia, Display, TEXT("Initializing scale context for BGRA Conversion"));
+#endif
 
     *img_convert_ctx = sws_getCachedContext(*img_convert_ctx,
         frame->width, frame->height, (AVPixelFormat)frame->format, frame->width, frame->height, AV_PIX_FMT_BGRA, SWS_BICUBIC, NULL, NULL, NULL);

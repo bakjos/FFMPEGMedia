@@ -13,8 +13,16 @@
 #include "Modules/ModuleInterface.h"
 #include "Templates/SharedPointer.h"
 
+#if PLATFORM_ANDROID
+    #include "Android/AndroidJNI.h"
+#endif
+
 extern  "C" {
 #include "libavformat/avformat.h"
+        
+#if PLATFORM_ANDROID
+#include "libavcodec/jni.h"
+#endif
 
 }
 
@@ -105,8 +113,8 @@ public:
 
 public:
 
-    static void  log_callback(void*, int level , const char* format, va_list arglist ) {
-
+    static void  log_callback(void *avcl, int level , const char* format, va_list arglist ) {
+        
         char buffer[2048];
 #if PLATFORM_WINDOWS
         vsprintf_s(buffer, 2048, format, arglist);
@@ -149,18 +157,17 @@ public:
 
 	virtual void StartupModule() override
 	{
-
+#ifndef PLATFORM_ANDROID
         AVUtilLibrary = LoadLibrary(TEXT("avutil"), TEXT("56"));
         SWResampleLibrary = LoadLibrary(TEXT("swresample"), TEXT("3"));
         AVCodecLibrary = LoadLibrary(TEXT("avcodec"), TEXT("58"));
         AVFormatLibrary = LoadLibrary(TEXT("avformat"), TEXT("58"));
         SWScaleLibrary = LoadLibrary(TEXT("swscale"), TEXT("5"));
-#ifndef PLATFORM_ANDROID
         PostProcLibrary = LoadLibrary(TEXT("postproc"), TEXT("55"));
-#endif
         AVFilterLibrary = LoadLibrary(TEXT("avfilter"), TEXT("7"));
         AVDeviceLibrary = LoadLibrary(TEXT("avdevice"), TEXT("58"));
-
+#endif
+        
         #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 9, 100)
             av_register_all();
         #endif
@@ -184,22 +191,19 @@ public:
 		} else {
 		    UE_LOG(LogFFMPEGMedia, Error, TEXT("Coudn't find the media module"));
 		}
-        
+
 #if PLATFORM_ANDROID
-       void* iter = NULL;
-       const AVCodec* codec = av_codec_iterate(&iter);
-       UE_LOG(LogFFMPEGMedia, Display, TEXT("Available Codecs:"));
-       while (codec) {
-           if (av_codec_is_decoder(codec)) {
-               UE_LOG(LogFFMPEGMedia, Display, TEXT("  decoder: %s - %d"), UTF8_TO_TCHAR(codec->name), codec->id);
-           } else {
-              UE_LOG(LogFFMPEGMedia, Display, TEXT("  encoder: %s - %d"), UTF8_TO_TCHAR(codec->name), codec->id);
-           }
-           codec = av_codec_iterate(&iter);
-       }
+        // hopefully this is early enough; we don't have a way add into JNI_OnLoad in AndroidJNI.cpp
+        
+        if (GJavaVM == NULL) {
+            UE_LOG(LogFFMPEGMedia, Error,  TEXT("The global vm hasn't been initialized"));
+        } else {
+            UE_LOG(LogFFMPEGMedia, Display,  TEXT("Initialize virtual machine for FFMPEG"));
+            av_jni_set_java_vm(GJavaVM, NULL);
+        }
 #endif
 
-    Initialized = true;
+        Initialized = true;
 
 
 	}
@@ -257,19 +261,10 @@ protected:
 #else
         LibDir = FPaths::Combine(*BaseDir, TEXT("ThirdParty/ffmpeg/bin/vs/win32"));
 #endif
-#elif PLATFORM_ANDROID
-       extension = TEXT(".so");
-       prefix = "lib";
-       separator = "";
 #endif
-#ifndef PLATFORM_ANDROID
+
         if (!LibDir.IsEmpty()) {
            FString LibraryPath = FPaths::Combine(*LibDir, prefix + name + extension);
-#else
-        {
-            FString LibraryPath = prefix + name + separator + version + extension;
-            UE_LOG(LogFFMPEGMedia, Display, TEXT("Loading library from: %s"), *LibraryPath);
-#endif
             return FPlatformProcess::GetDllHandle(*LibraryPath);
         }
         return nullptr;
@@ -293,3 +288,5 @@ private:
 
 
 IMPLEMENT_MODULE(FFFMPEGMediaModule, FFMPEGMedia);
+    
+
