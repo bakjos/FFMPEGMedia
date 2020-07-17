@@ -65,7 +65,7 @@ public class FFMPEGMedia : ModuleRules
 			foreach (string dll in dlls)
 			{
 				PublicDelayLoadDLLs.Add(dll);
-				CopyToBinaries(Path.Combine(BinariesPath, dll), Target);
+				//CopyToBinaries(Path.Combine(BinariesPath, dll), Target);
 				RuntimeDependencies.Add(Path.Combine(BinariesPath, dll), StagedFileType.NonUFS);
 			}
 
@@ -93,7 +93,7 @@ public class FFMPEGMedia : ModuleRules
           string[] Platforms = { "armeabi-v7a", "arm64-v8a", "x86", "x86_64"  };
           
           
-          string[] libs = {"libavcodec.so","libavdevice.so", "libavfilter.so", "libavformat.so", "libavutil.so",  "libcpufeatures.so", "libswresample.so", "libswscale.so"};
+          string[] libs = {"libavcodec.so","libavdevice.so", "libavfilter.so", "libavformat.so", "libavutil.so", "libswresample.so", "libswscale.so"};
           
           System.Console.WriteLine("Architecture: " + Target);
           

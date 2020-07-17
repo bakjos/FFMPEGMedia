@@ -13,7 +13,7 @@ public:
     double Get();
     void Set (double pts1, int serial1);
     void SetAt( double pts1, int serial1, double time1);
-    void SetSpeed(double speed);
+    void SetSpeed(double speed1);
     void SetPaused(bool paused);
     double GetPts();
     int GetSerial();

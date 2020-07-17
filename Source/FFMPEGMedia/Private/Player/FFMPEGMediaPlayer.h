@@ -20,6 +20,7 @@ class IMediaEventSink;
 
 struct AVIOContext;
 struct AVFormatContext;
+struct AVClass;
 
 /**
  * Implements a media player using the Windows Media Foundation framework.
@@ -106,6 +107,10 @@ private:
     /** FFMPEG Functions */
 
     AVFormatContext*  ReadContext(const TSharedPtr<FArchive, ESPMode::ThreadSafe>& Archive, const FString& Url, bool Precache);
+    
+    static void dumpOptions(const AVClass *clazz);
+    
+    void dumpFFMPEGInfo();
 
     /** FFMPEG Structs */
     AVFormatContext     *FormatContext;

@@ -97,7 +97,7 @@ int FFMPEGPacketQueue::PutPrivate(AVPacket *pkt) {
     return 0;
 }
 
-int  FFMPEGPacketQueue::Get(AVPacket *pkt, int block, int *serial1) {
+int  FFMPEGPacketQueue::Get(AVPacket *pkts, int block, int *serial1) {
     MyAVPacketList *pkt1;
     int ret;
 
@@ -117,7 +117,7 @@ int  FFMPEGPacketQueue::Get(AVPacket *pkt, int block, int *serial1) {
             nb_packets--;
             size -= pkt1->pkt.size + sizeof(*pkt1);
             duration -= pkt1->pkt.duration;
-            *pkt = pkt1->pkt;
+            *pkts = pkt1->pkt;
             if (serial1)
                 *serial1 = pkt1->serial;
             delete pkt1;

@@ -18,7 +18,7 @@ public:
     FFMPEGDecoder();
     ~FFMPEGDecoder();
 
-    void Init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond);
+    void Init(AVCodecContext *avctx1, FFMPEGPacketQueue *queue1, CondWait *empty_queue_cond1);
     int DecodeFrame( AVFrame *frame, AVSubtitle *sub);
     void SetDecoderReorderPts ( int pts );
     void Abort(FFMPEGFrameQueue* fq);

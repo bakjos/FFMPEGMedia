@@ -20,7 +20,7 @@
 #include "MediaSampleQueue.h"
 #include "Templates/SharedPointer.h"
 
-
+#include "HAL/RunnableThread.h"
 
 
 class FFFMPEGMediaAudioSamplePool;
@@ -429,7 +429,7 @@ private:
     int DisplayThread();
 
     /** Decode an audio frame and extract the current time and duration for each sample*/
-    int AudioDecodeFrame (FTimespan& Time, FTimespan& Duration1);
+    int AudioDecodeFrame (FTimespan& Time, FTimespan& Durations);
 
     /** Convert the audio frame to be played by the media player*/
     void RenderAudio();

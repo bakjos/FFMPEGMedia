@@ -7,7 +7,7 @@
 
 #include "IFFMPEGMediaModule.h"
 #include "Core.h"
-
+#include "Interfaces/IPluginManager.h"
 
 #include "IMediaModule.h"
 #include "Modules/ModuleInterface.h"
@@ -19,7 +19,6 @@ extern  "C" {
 }
 
 #include "FFMPEGMediaPlayer.h"
-#include <Interfaces/IPluginManager.h>
 
 
 
@@ -185,8 +184,22 @@ public:
 		} else {
 		    UE_LOG(LogFFMPEGMedia, Error, TEXT("Coudn't find the media module"));
 		}
+        
+#if PLATFORM_ANDROID
+       void* iter = NULL;
+       const AVCodec* codec = av_codec_iterate(&iter);
+       UE_LOG(LogFFMPEGMedia, Display, TEXT("Available Codecs:"));
+       while (codec) {
+           if (av_codec_is_decoder(codec)) {
+               UE_LOG(LogFFMPEGMedia, Display, TEXT("  decoder: %s - %d"), UTF8_TO_TCHAR(codec->name), codec->id);
+           } else {
+              UE_LOG(LogFFMPEGMedia, Display, TEXT("  encoder: %s - %d"), UTF8_TO_TCHAR(codec->name), codec->id);
+           }
+           codec = av_codec_iterate(&iter);
+       }
+#endif
 
-		Initialized = true;
+    Initialized = true;
 
 
 	}

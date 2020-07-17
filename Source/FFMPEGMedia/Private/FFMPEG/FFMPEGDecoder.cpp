@@ -34,7 +34,7 @@ int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
     int ret = AVERROR(EAGAIN);
 
     for (;;) {
-        AVPacket pkt1;
+        AVPacket pkts;
 
         if (queue->GetSerial() == pkt_serial) {
             do {
@@ -82,16 +82,16 @@ int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
             if (queue->GetNumPackets() == 0)
                 empty_queue_cond->signal();
             if (packet_pending) {
-                av_packet_move_ref(&pkt1, &pkt1);
+                av_packet_move_ref(&pkts, &pkts);
                 packet_pending = false;
             }
             else {
-                if (queue->Get(&pkt1, 1, &pkt_serial) < 0)
+                if (queue->Get(&pkts, 1, &pkt_serial) < 0)
                     return -1;
             }
         } while (queue->GetSerial() != pkt_serial);
 
-        if (FFMPEGPacketQueue::IsFlushPacket(pkt1.data)) {
+        if (FFMPEGPacketQueue::IsFlushPacket(pkts.data)) {
             avcodec_flush_buffers(avctx);
             finished = 0;
             next_pts = start_pts;
@@ -100,26 +100,26 @@ int FFMPEGDecoder::DecodeFrame( AVFrame *frame, AVSubtitle *sub) {
         else {
             if (avctx->codec_type == AVMEDIA_TYPE_SUBTITLE) {
                 int got_frame = 0;
-                ret = avcodec_decode_subtitle2(avctx, sub, &got_frame, &pkt1);
+                ret = avcodec_decode_subtitle2(avctx, sub, &got_frame, &pkts);
                 if (ret < 0) {
                     ret = AVERROR(EAGAIN);
                 }
                 else {
-                    if (got_frame && !pkt1.data) {
+                    if (got_frame && !pkts.data) {
                         packet_pending = 1;
-                        av_packet_move_ref(&pkt1, &pkt1);
+                        av_packet_move_ref(&pkts, &pkts);
                     }
-                    ret = got_frame ? 0 : (pkt1.data ? AVERROR(EAGAIN) : AVERROR_EOF);
+                    ret = got_frame ? 0 : (pkts.data ? AVERROR(EAGAIN) : AVERROR_EOF);
                 }
             }
             else {
-                if (avcodec_send_packet(avctx, &pkt1) == AVERROR(EAGAIN)) {
+                if (avcodec_send_packet(avctx, &pkts) == AVERROR(EAGAIN)) {
                     av_log(avctx, AV_LOG_ERROR, "Receive_frame and send_packet both returned EAGAIN, which is an API violation.\n");
                     packet_pending = 1;
-                    av_packet_move_ref(&pkt1, &pkt1);
+                    av_packet_move_ref(&pkts, &pkts);
                 }
             }
-            av_packet_unref(&pkt1);
+            av_packet_unref(&pkts);
         }
     }
 
