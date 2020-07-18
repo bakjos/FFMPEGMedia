@@ -19,7 +19,7 @@
 
 extern  "C" {
 #include "libavformat/avformat.h"
-        
+
 #if PLATFORM_ANDROID
 #include "libavcodec/jni.h"
 #endif
@@ -113,8 +113,8 @@ public:
 
 public:
 
-    static void  log_callback(void *avcl, int level , const char* format, va_list arglist ) {
-        
+    static void  log_callback(void*, int level , const char* format, va_list arglist ) {
+
         char buffer[2048];
 #if PLATFORM_WINDOWS
         vsprintf_s(buffer, 2048, format, arglist);
@@ -123,7 +123,7 @@ public:
 #endif
         FString str = TEXT("FFMPEG - ");
         str += buffer;
-        
+
         switch (level) {
         case AV_LOG_TRACE:
             UE_LOG(LogFFMPEGMedia, VeryVerbose, TEXT("%s"), *str);
@@ -150,14 +150,16 @@ public:
             UE_LOG(LogFFMPEGMedia, Display,  TEXT("%s"), *str );
         }
 
-        
+
     }
 
 	//~ IModuleInterface interface
 
 	virtual void StartupModule() override
 	{
-#ifndef PLATFORM_ANDROID
+#if PLATFORM_ANDROID
+        UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Avoid load the libraries once again on android"));
+#else
         AVUtilLibrary = LoadLibrary(TEXT("avutil"), TEXT("56"));
         SWResampleLibrary = LoadLibrary(TEXT("swresample"), TEXT("3"));
         AVCodecLibrary = LoadLibrary(TEXT("avcodec"), TEXT("58"));
@@ -167,19 +169,19 @@ public:
         AVFilterLibrary = LoadLibrary(TEXT("avfilter"), TEXT("7"));
         AVDeviceLibrary = LoadLibrary(TEXT("avdevice"), TEXT("58"));
 #endif
-        
+
         #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 9, 100)
             av_register_all();
         #endif
 
         avformat_network_init();
-        av_log_set_level(AV_LOG_DEBUG);
+        av_log_set_level(AV_LOG_INFO);
 
         av_log_set_callback(&log_callback);
-        
+
         UE_LOG(LogFFMPEGMedia, Display, TEXT("FFmpeg AVCodec version: %d.%d.%d"), LIBAVFORMAT_VERSION_MAJOR, LIBAVFORMAT_VERSION_MINOR, LIBAVFORMAT_VERSION_MICRO);
         UE_LOG(LogFFMPEGMedia, Display, TEXT("FFmpeg license: %s"), UTF8_TO_TCHAR(avformat_license()));
-        
+
 
 		// register capture device support
 		auto MediaModule = FModuleManager::LoadModulePtr<IMediaModule>("Media");
@@ -194,7 +196,7 @@ public:
 
 #if PLATFORM_ANDROID
         // hopefully this is early enough; we don't have a way add into JNI_OnLoad in AndroidJNI.cpp
-        
+
         if (GJavaVM == NULL) {
             UE_LOG(LogFFMPEGMedia, Error,  TEXT("The global vm hasn't been initialized"));
         } else {
@@ -232,7 +234,7 @@ public:
         if (AVCodecLibrary) FPlatformProcess::FreeDllHandle(AVCodecLibrary);
         if (SWResampleLibrary) FPlatformProcess::FreeDllHandle(SWResampleLibrary);
         if (AVUtilLibrary) FPlatformProcess::FreeDllHandle(AVUtilLibrary);
-        		
+
 		Initialized = false;
 
 
@@ -262,9 +264,8 @@ protected:
         LibDir = FPaths::Combine(*BaseDir, TEXT("ThirdParty/ffmpeg/bin/vs/win32"));
 #endif
 #endif
-
         if (!LibDir.IsEmpty()) {
-           FString LibraryPath = FPaths::Combine(*LibDir, prefix + name + extension);
+            FString LibraryPath = FPaths::Combine(*LibDir, prefix + name + separator + version + extension);
             return FPlatformProcess::GetDllHandle(*LibraryPath);
         }
         return nullptr;
@@ -288,5 +289,3 @@ private:
 
 
 IMPLEMENT_MODULE(FFFMPEGMediaModule, FFMPEGMedia);
-    
-
