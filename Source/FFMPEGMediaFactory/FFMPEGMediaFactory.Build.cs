@@ -7,7 +7,7 @@ namespace UnrealBuildTool.Rules
 		public FFMPEGMediaFactory(ReadOnlyTargetRules Target) : base(Target)
 		{
 			PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-
+			ShadowVariableWarningLevel = WarningLevel.Error;
 			OptimizeCode = CodeOptimization.Never;
 
 			DynamicallyLoadedModuleNames.AddRange(

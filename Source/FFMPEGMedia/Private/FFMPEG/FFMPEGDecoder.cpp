@@ -13,7 +13,6 @@ FFMPEGDecoder::FFMPEGDecoder() {
     start_pts_tb = {0,0};
     next_pts = 0;
     next_pts_tb = {0, 0};
-    pkt = {0};
     decoder_tid = NULL;
 }
 
@@ -22,10 +21,10 @@ FFMPEGDecoder::~FFMPEGDecoder()
 {
 }
 
-void FFMPEGDecoder::Init(AVCodecContext *avctx, FFMPEGPacketQueue *queue, CondWait *empty_queue_cond) {
-    this->avctx = avctx;
-    this->queue = queue;
-    this->empty_queue_cond = empty_queue_cond;
+void FFMPEGDecoder::Init(AVCodecContext *_avctx, FFMPEGPacketQueue *_queue, CondWait *_empty_queue_cond) {
+    this->avctx = _avctx;
+    this->queue = _queue;
+    this->empty_queue_cond = _empty_queue_cond;
     this->start_pts = AV_NOPTS_VALUE;
     this->pkt_serial = -1;
 }
@@ -131,7 +130,6 @@ void FFMPEGDecoder::SetDecoderReorderPts ( int pts ) {
 }
 
 void  FFMPEGDecoder::Destroy() {    
-    av_packet_unref(&pkt);
     avcodec_free_context(&avctx);
 }
 
@@ -187,12 +185,12 @@ int  FFMPEGDecoder::GetFinished() {
     return finished;
 }
 
-void  FFMPEGDecoder::SetTime ( int64_t start_pts, AVRational  start_pts_tb) {
-    this->start_pts = start_pts;
-    this->start_pts_tb = start_pts_tb;
+void  FFMPEGDecoder::SetTime ( int64_t _start_pts, AVRational  _start_pts_tb) {
+    this->start_pts = _start_pts;
+    this->start_pts_tb = _start_pts_tb;
 }
 
-void  FFMPEGDecoder::SetFinished ( int finished ) {
-    this->finished = finished;
+void  FFMPEGDecoder::SetFinished ( int _finished ) {
+    this->finished = _finished;
 }
 
