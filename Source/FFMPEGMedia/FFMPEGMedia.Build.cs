@@ -124,8 +124,8 @@ public class FFMPEGMedia : ModuleRules
 	public FFMPEGMedia(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		OptimizeCode = CodeOptimization.Never;
 		bEnableExceptions = true;
+		//OptimizeCode = CodeOptimization.Never;
 
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[] {
