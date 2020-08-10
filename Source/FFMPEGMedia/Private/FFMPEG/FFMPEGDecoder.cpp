@@ -131,6 +131,7 @@ void FFMPEGDecoder::SetDecoderReorderPts ( int pts ) {
 
 void  FFMPEGDecoder::Destroy() {    
     avcodec_free_context(&avctx);
+    avctx = NULL;
 }
 
 void FFMPEGDecoder::Abort(FFMPEGFrameQueue* fq) {

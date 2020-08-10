@@ -32,6 +32,7 @@ void FFMPEGFrame::Destroy() {
         av_frame_free(&frame);
     }
     frame = NULL;
+    uploaded = false;
 }
 
 void FFMPEGFrame::UnRef() {

@@ -116,9 +116,6 @@ FFFMPEGMediaTracks::FFFMPEGMediaTracks()
 	, hw_device_ctx(NULL)
 	, hw_frames_ctx(NULL)
 	, swrContext(NULL)
-	, auddec(MakeShareable(new FFMPEGDecoder()))
-	, viddec(MakeShareable(new FFMPEGDecoder()))
-	, subdec(MakeShareable(new FFMPEGDecoder()))
 	, aborted(false)
   , displayRunning(false)
   , step(false)  
@@ -345,6 +342,7 @@ void FFFMPEGMediaTracks::Shutdown()
 	UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks: %p: Shutting down (context %p)"), this, FormatContext);
 
     aborted = true;
+    displayRunning = false;
 
     maxFrameDuration = 0.0;
 
@@ -359,22 +357,58 @@ void FFFMPEGMediaTracks::Shutdown()
     videoStreamIdx = -1;
     audioStreamIdx = -1;
     subtitleStreamIdx = -1;
-
     
-    readThread = nullptr;
-    audioThread = nullptr;
-    videoThread = nullptr;
-    subtitleThread = nullptr;
+    if ( displayThread != nullptr) {
+        displayThread->WaitForCompletion();
+        displayThread = nullptr;
+    }
+    
+    if ( readThread != nullptr) {
+        readThread->WaitForCompletion();
+        readThread = nullptr;
+    }
+    if ( audioThread != nullptr) {
+        audioThread->WaitForCompletion();
+        audioThread = nullptr;
+    }
+    if ( videoThread != nullptr) {
+        videoThread->Kill(true);
+        videoThread = nullptr;
+    }
+    if ( subtitleThread != nullptr) {
+        subtitleThread->WaitForCompletion();
+        subtitleThread = nullptr;
+    }
+    
+    
+    
+    
+    if ( imgConvertCtx ) {
+        sws_freeContext(imgConvertCtx);
+        imgConvertCtx = NULL;
+    }
+    
+    hwaccel_retrieve_data = nullptr;
+    auddec = MakeShareable(new FFMPEGDecoder());
+    viddec = MakeShareable(new FFMPEGDecoder());
+    subdec= MakeShareable(new FFMPEGDecoder());
+   
 
      /*hw_device_ctx(NULL)
     , hw_frames_ctx(NULL)
     , hwaccel_ctx(NULL)
     , hwAccelPixFmt(AV_PIX_FMT_NONE)*/
     
-
-
 	FScopeLock Lock(&CriticalSection);
 
+    pictq.Destroy();
+    subpq.Destroy();
+    sampq.Destroy();
+
+    audioq.Flush();
+    videoq.Flush();
+    subtitleq.Flush();
+    
 	AudioSamplePool->Reset();
 	VideoSamplePool->Reset();
 
@@ -395,9 +429,15 @@ void FFFMPEGMediaTracks::Shutdown()
 
 	MediaSourceChanged = false;
 	SelectionChanged = false;
+    bPrerolled = false;
+    
+    CurrentState =  EMediaState::Closed;
 
     currentStreams = 0;
     totalStreams = 0;
+    frameTimer = 0.0;
+    maxFrameDuration = 0.0;
+    dataBuffer.Reset();
 }
 
 void FFFMPEGMediaTracks::TickInput(FTimespan DeltaTime, FTimespan Timecode) {
@@ -1609,6 +1649,10 @@ int FFFMPEGMediaTracks::StreamComponentOpen(int stream_index) {
     if (avctx->codec_type == AVMEDIA_TYPE_VIDEO || avctx->codec_type == AVMEDIA_TYPE_AUDIO)
         av_dict_set(&opts, "refcounted_frames", "1", 0);
 
+    if (Settings->ZeroLatencyStreaming && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+        av_dict_set(&opts, "tune", "zerolatency", 0);
+    }
+
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         if (Settings->UseHardwareAcceleratedCodecs && avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
             UE_LOG(LogFFMPEGMedia, Warning, TEXT("Coudn't open the hwaccel codec, trying a different one"));
@@ -1856,6 +1900,7 @@ double FFFMPEGMediaTracks::GetMasterClock() {
 }
 
 int FFFMPEGMediaTracks::UploadTexture(FFMPEGFrame* vp, AVFrame *frame, struct SwsContext **img_convert_ctx) {
+    
     int size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, frame->width, frame->height, 1);
 
     int bufSize = size + 1;
@@ -2501,7 +2546,7 @@ void FFFMPEGMediaTracks::VideoRefresh(double *remaining_time) {
       if (videoStream) {
         bool retry = true;
 
-        while (retry) {
+        while (retry && displayRunning) {
             if (pictq.GetNumRemaining() == 0) {
                 // nothing to do, no picture to display in the queue
             } else {
@@ -2725,7 +2770,8 @@ int FFFMPEGMediaTracks::VideoThread() {
 
         duration = (frame_rate.num && frame_rate.den ? av_q2d({ frame_rate.den, frame_rate.num }) : 0);
         pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
-        pictq.QueuePicture(frame, pts, duration, frame->pkt_pos, viddec->GetPktSerial());
+        ret = pictq.QueuePicture(frame, pts, duration, frame->pkt_pos, viddec->GetPktSerial());
+        
         av_frame_unref(frame);
 
         if (ret < 0) {

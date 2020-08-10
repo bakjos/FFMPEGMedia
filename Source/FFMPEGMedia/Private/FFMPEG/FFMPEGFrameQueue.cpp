@@ -43,6 +43,14 @@ void FFMPEGFrameQueue::Destroy() {
         FFMPEGFrame *vp = queue[i];
         if ( vp) vp->Destroy();
     }
+    
+    rindex = 0;
+    windex = 0;
+    size = 0;
+    max_size = 0;
+    keep_last = 0;
+    rindex_shown = 0;
+    pktq = NULL;
 }
 
 void FFMPEGFrameQueue::Signal() {

@@ -37,6 +37,7 @@ public:
 	
 	UPROPERTY(config, EditAnywhere, Category=Media)
 	bool UseInfiniteBuffer;
+    
 
     UPROPERTY(config, EditAnywhere, Category = Media)
     bool AllowFrameDrop;
@@ -46,6 +47,9 @@ public:
 
     UPROPERTY(config, EditAnywhere, Category = Media)
     bool DisableAudio;
+
+    UPROPERTY(config, EditAnywhere, Category=Media)
+	bool ZeroLatencyStreaming;
 
     //Allow non spec compliant speedup tricks.
     UPROPERTY(config, EditAnywhere, Category = Media)
