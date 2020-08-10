@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--Android Camera plugin additions-->
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+	<!-- init section is always evaluated once per architecture -->
+	<init>
+		<log text="FFMPEG Media init"/>
+        
+        <isArch arch="armeabi-v7a">
+            <setBool result="bSupported" value="true"/>
+        </isArch>
+        <isArch arch="arm64-v8a">
+            <setBool result="bSupported" value="true"/>
+        </isArch>
+        
+        <isArch arch="x86_64">
+            <setBool result="bSupported" value="true"/>
+        </isArch>
+        
+	</init>
+	
+	<!-- optional files or directories to copy to Intermediate/Android/APK -->
+    <resourceCopies>
+        <log text="Copying GoogleVR runtime files to staging" />
+        <isArch arch="armeabi-v7a">
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libavcodec.so"
+                        dst="$S(BuildDir)/libs/armeabi-v7a/libavcodec.so" />
+                        
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libavdevice.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libavdevice.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libavfilter.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libavfilter.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libavformat.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libavformat.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libavutil.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libavutil.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libswresample.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libswresample.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libswscale.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libswscale.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/armeabi-v7a/libcpufeatures.so"
+            dst="$S(BuildDir)/libs/armeabi-v7a/libcpufeatures.so" />
+        </isArch>
+        
+        <isArch arch="arm64-v8a">
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libavcodec.so"
+                        dst="$S(BuildDir)/libs/arm64-v8a/libavcodec.so" />
+                        
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libavdevice.so"
+            dst="$S(BuildDir)/libs/arm64-v8a/libavdevice.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libavfilter.so"
+            dst="$S(BuildDir)/libs/arm64-v8a/libavfilter.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libavformat.so"
+            dst="$S(BuildDir)/libs/arm64-v8a/libavformat.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libavutil.so"
+            dst="$S(BuildDir)/libs/arm64-v8a/libavutil.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libswresample.so"
+            dst="$S(BuildDir)/libs/arm64-v8a/libswresample.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/arm64-v8a/libswscale.so"
+            dst="$S(BuildDir)/libs/arm64-v8a/libswscale.so" />
+            
+        </isArch>
+        <isArch arch="x86">
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libavcodec.so"
+                        dst="$S(BuildDir)/libs/x86/libavcodec.so" />
+                        
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libavdevice.so"
+            dst="$S(BuildDir)/libs/x86/libavdevice.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libavfilter.so"
+            dst="$S(BuildDir)/libs/x86/libavfilter.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libavformat.so"
+            dst="$S(BuildDir)/libs/x86/libavformat.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libavutil.so"
+            dst="$S(BuildDir)/libs/x86/libavutil.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libswresample.so"
+            dst="$S(BuildDir)/libs/x86/libswresample.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86/libswscale.so"
+            dst="$S(BuildDir)/libs/x86/libswscale.so" />
+            
+        </isArch>
+        <isArch arch="x86_64">
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libavcodec.so"
+                        dst="$S(BuildDir)/libs/x86_64/libavcodec.so" />
+                        
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libavdevice.so"
+            dst="$S(BuildDir)/libs/x86_64/libavdevice.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libavfilter.so"
+            dst="$S(BuildDir)/libs/x86_64/libavfilter.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libavformat.so"
+            dst="$S(BuildDir)/libs/x86_64/libavformat.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libavutil.so"
+            dst="$S(BuildDir)/libs/x86_64/libavutil.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libswresample.so"
+            dst="$S(BuildDir)/libs/x86_64/libswresample.so" />
+            
+            <copyFile src="$S(PluginDir)/../../ThirdParty/ffmpeg/lib/android/x86_64/libswscale.so"
+            dst="$S(BuildDir)/libs/x86_64/libswscale.so" />
+            
+        </isArch>
+    </resourceCopies>
+
+</root>

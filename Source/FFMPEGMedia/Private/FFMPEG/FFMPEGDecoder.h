@@ -34,7 +34,6 @@ public:
 
 private:
     int decoder_reorder_pts;
-    AVPacket pkt;
     FFMPEGPacketQueue *queue;
     AVCodecContext *avctx;
     int pkt_serial;

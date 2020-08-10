@@ -27,10 +27,10 @@ FFMPEGFrameQueue::~FFMPEGFrameQueue()
     }
 }
 
-int FFMPEGFrameQueue::Init( FFMPEGPacketQueue *pktq, int max_size, int keep_last) {
-    this->pktq = pktq;
-    this->max_size = FFMIN(max_size, FRAME_QUEUE_SIZE);
-    this->keep_last = !!keep_last;
+int FFMPEGFrameQueue::Init( FFMPEGPacketQueue *_pktq, int _max_size, int _keep_last) {
+    this->pktq = _pktq;
+    this->max_size = FFMIN(_max_size, FRAME_QUEUE_SIZE);
+    this->keep_last = !!_keep_last;
     for (int i = 0; i < this->max_size; i++)
         if (!(queue[i]->Init()))
             return AVERROR(ENOMEM);

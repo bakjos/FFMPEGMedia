@@ -14,6 +14,8 @@
 
 extern  "C" {
 #include "libavformat/avformat.h"
+#include "libavutil/opt.h"
+#include "libavutil/time.h"
 }
 
 
@@ -374,7 +376,173 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
 
     if (FormatContext->pb)
         FormatContext->pb->eof_reached = 0; // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
-
+    
+#ifdef UE_BUILD_DEBUG
+    dumpFFMPEGInfo();
+#endif
 
     return FormatContext;
+}
+
+static void print_option(const AVClass *clazz, const AVOption *o) {
+       FString type;
+       switch (o->type) {
+       case AV_OPT_TYPE_BINARY:   type = TEXT("hexadecimal string"); break;
+       case AV_OPT_TYPE_STRING:   type = TEXT("string");             break;
+       case AV_OPT_TYPE_INT:
+       case AV_OPT_TYPE_INT64:    type = TEXT("integer");            break;
+       case AV_OPT_TYPE_FLOAT:
+       case AV_OPT_TYPE_DOUBLE:   type = TEXT("float");              break;
+       case AV_OPT_TYPE_RATIONAL: type = TEXT("rational number");    break;
+       case AV_OPT_TYPE_FLAGS:    type = TEXT("flags");              break;
+       case AV_OPT_TYPE_BOOL:     type = TEXT("bool");              break;
+       case AV_OPT_TYPE_SAMPLE_FMT:type = TEXT("SampleFmt");              break;
+       default:                   type = TEXT("value");              break;
+       }
+   
+       FString flags;
+
+
+       if (o->flags & AV_OPT_FLAG_ENCODING_PARAM) {
+           flags = TEXT("input");
+           if (o->flags & AV_OPT_FLAG_ENCODING_PARAM)
+               flags += TEXT("/");
+       }
+       if (o->flags & AV_OPT_FLAG_ENCODING_PARAM)
+           flags += TEXT("output");
+
+   
+       FString help;
+
+       if (o->help)
+           help = o->help;
+
+       FString possibleValues;
+       if (o->unit) {
+           const AVOption *u = av_opt_next(&clazz, NULL);
+        
+           while (u) {
+               bool found = false;
+               if (u->type == AV_OPT_TYPE_CONST && u->unit && !strcmp(u->unit, o->unit)) {
+                   possibleValues += "\n";
+                   possibleValues += "\t\t* ";
+                   possibleValues +=  u->name;
+                   found = true;
+               }
+               u = av_opt_next(&clazz, u);
+           }
+       
+       }
+       if ( o->unit) {
+           UE_LOG(LogFFMPEGMedia, Display, TEXT("\t%s - %s: %s %s"), *type, UTF8_TO_TCHAR(o->name), *help,  *possibleValues);
+       } else {
+          UE_LOG(LogFFMPEGMedia, Display, TEXT( "\t%s - %s: %s"), *type, UTF8_TO_TCHAR(o->name), *help);
+       }
+  
+   }
+
+
+void FFFMPEGMediaPlayer::dumpOptions(const AVClass *clazz) {
+   const AVOption *o = av_opt_next(&clazz, NULL);
+
+   while (o != NULL) {
+       if (o->type != AV_OPT_TYPE_CONST) {
+           print_option(clazz, o);
+       }
+       o = av_opt_next(clazz, o);
+   }
+}
+
+
+
+void FFFMPEGMediaPlayer::dumpFFMPEGInfo() {
+  
+   UE_LOG(LogFFMPEGMedia, Display, TEXT("AVFormat configuration: %s"), UTF8_TO_TCHAR(avformat_configuration()));
+   
+   if ( FormatContext ) {
+       if(FormatContext->iformat)
+           UE_LOG(LogFFMPEGMedia, Display, TEXT("Format Name: %s"),  UTF8_TO_TCHAR(FormatContext->iformat->name));
+
+       FString sz_duration = TEXT("  Duration: ");
+       if (FormatContext->duration != AV_NOPTS_VALUE) {
+           int hours, mins, secs, us;
+           int64_t duration = FormatContext->duration + (FormatContext->duration <= INT64_MAX - 5000 ? 5000 : 0);
+           secs = duration / AV_TIME_BASE;
+           us = duration % AV_TIME_BASE;
+           mins = secs / 60;
+           secs %= 60;
+           hours = mins / 60;
+           mins %= 60;
+           sz_duration += FString::Printf(TEXT("%02d:%02d:%02d.%02d"), hours, mins, secs,(100 * us) / AV_TIME_BASE);
+       }
+       else {
+           sz_duration += TEXT("N/A");
+       }
+
+       if (FormatContext->start_time != AV_NOPTS_VALUE) {
+           int secs, us;
+           sz_duration +=  ", start: ";
+           secs = llabs(FormatContext->start_time / AV_TIME_BASE);
+           us = llabs(FormatContext->start_time % AV_TIME_BASE);
+           sz_duration += FString::Printf(TEXT("%s%d.%06d"),FormatContext->start_time >= 0 ? TEXT("") : TEXT("-"),secs,(int)av_rescale(us, 1000000, AV_TIME_BASE));
+       }
+       sz_duration += TEXT(", bitrate: ");
+       if (FormatContext->bit_rate)
+       {
+           int64_t br = FormatContext->bit_rate / 1000;
+           sz_duration += FString::Printf(TEXT("0x%08x%08x kb/s"), (uint32_t)(br >> 32),(uint32_t)(br & 0xFFFFFFFF));
+       }
+
+       else
+           sz_duration +=  TEXT("N/A");
+       
+       sz_duration +=  TEXT("\n");
+   
+
+       for (unsigned int i = 0; i < FormatContext->nb_chapters; i++) {
+           AVChapter *ch = FormatContext->chapters[i];
+           sz_duration += FString::Printf(TEXT("    Chapter %d: "), i);
+           sz_duration += FString::Printf(TEXT("start %f, "), ch->start * av_q2d(ch->time_base));
+           sz_duration += FString::Printf(TEXT("end %f\n"), ch->end * av_q2d(ch->time_base));
+       }
+
+       if (FormatContext->nb_programs) {
+           unsigned int  total = 0;
+           for (unsigned int j = 0; j < FormatContext->nb_programs; j++) {
+               AVDictionaryEntry *name = av_dict_get(FormatContext->programs[j]->metadata,
+                   "name", NULL, 0);
+               sz_duration += FString::Printf(TEXT("  Program %d %s\n"), FormatContext->programs[j]->id,
+                   name ? name->value : "");
+               
+               total += FormatContext->programs[j]->nb_stream_indexes;
+           }
+           if (total < FormatContext->nb_streams)
+               sz_duration += TEXT("  No Program\n");
+       }
+
+
+       UE_LOG(LogFFMPEGMedia, Display, TEXT("%s"), *sz_duration);
+       
+//       UE_LOG(LogFFMPEGMedia, Display, TEXT("\n\nDefault format options"));
+//       dumpOptions(avformat_get_class());
+//
+//       if (FormatContext->iformat && FormatContext->iformat->priv_class) {
+//           UE_LOG(LogFFMPEGMedia, Display, TEXT("\n\nFormat Options\n"));
+//           dumpOptions(FormatContext->iformat->priv_class);
+//       }
+//
+//       UE_LOG(LogFFMPEGMedia, Display, TEXT("\n\nDefault codec options\n"));
+//       dumpOptions(avcodec_get_class());
+//
+//       if ( FormatContext->video_codec && FormatContext->video_codec->priv_class ) {
+//           UE_LOG(LogFFMPEGMedia, Display, TEXT("\n\nVideo Codec\n"));
+//           dumpOptions( FormatContext->video_codec->priv_class);
+//       }
+//
+//       if (FormatContext->audio_codec && FormatContext->audio_codec->priv_class) {
+//           UE_LOG(LogFFMPEGMedia, Display, TEXT("\n\nAudio Codec\n"));
+//           dumpOptions(FormatContext->audio_codec->priv_class);
+//       }
+
+   }
 }
