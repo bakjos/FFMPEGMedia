@@ -15,6 +15,16 @@ enum class ESynchronizationType : uint8 {
     ExternalClock
 };
 
+UENUM()
+enum class ERTSPTransport : uint8 {
+    Default = 0,
+    Udp,
+    UdpMulticast,
+    Tcp,
+    Http,
+    Https
+};
+
 
 
 /**
@@ -50,6 +60,9 @@ public:
 
     UPROPERTY(config, EditAnywhere, Category=Media)
 	bool ZeroLatencyStreaming;
+    
+    UPROPERTY(config, EditAnywhere, Category = Media)
+    ERTSPTransport RtspTransport;
 
     //Allow non spec compliant speedup tricks.
     UPROPERTY(config, EditAnywhere, Category = Media)

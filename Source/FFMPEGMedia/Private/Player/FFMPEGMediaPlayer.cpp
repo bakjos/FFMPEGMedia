@@ -309,6 +309,36 @@ AVFormatContext* FFFMPEGMediaPlayer::ReadContext(const TSharedPtr<FArchive, ESPM
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
         scan_all_pmts_set = 1;
     }
+    
+    const auto Settings = GetDefault<UFFMPEGMediaSettings>();
+    if ( Settings->RtspTransport != ERTSPTransport::Default) {
+        switch (Settings->RtspTransport) {
+            case ERTSPTransport::Udp:
+                av_dict_set(&format_opts, "rtsp_transport", "udp", 0);
+                break;
+            case ERTSPTransport::Tcp:
+                av_dict_set(&format_opts, "rtsp_transport", "tcp", 0);
+                break;
+                
+            case ERTSPTransport::UdpMulticast:
+                av_dict_set(&format_opts, "rtsp_transport", "udp_multicast", 0);
+                break;
+            case ERTSPTransport::Http:
+                av_dict_set(&format_opts, "rtsp_transport", "http", 0);
+                break;
+            case ERTSPTransport::Https:
+                av_dict_set(&format_opts, "rtsp_transport", "https", 0);
+                break;
+            default:
+                break;
+        }
+        
+    }
+    
+    if ( Settings->ZeroLatencyStreaming) {
+        av_dict_set(&format_opts, "fflags", "nobuffer", 0);
+    }
+    
     int err = 0;
     if (!Archive.IsValid()) {
         if (Url.StartsWith(TEXT("file://")))
