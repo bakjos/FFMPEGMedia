@@ -7,7 +7,7 @@
 
 #include "IFFMPEGMediaModule.h"
 #include "Core.h"
-#include "IPluginManager.h"
+#include "Interfaces/IPluginManager.h"
 
 #include "IMediaModule.h"
 #include "Modules/ModuleInterface.h"
