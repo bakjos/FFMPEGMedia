@@ -102,6 +102,13 @@ FName FFFMPEGMediaPlayer::GetPlayerName() const
 	return PlayerName;
 }
 
+FGuid FFFMPEGMediaPlayer::GetPlayerPluginGUID() const 
+{
+    // {938BEEB4-2E88-450E-9C1C-6109456279B3}
+    static FGuid PlayerPluginGUID(0x938beeb4, 0x2e88450e, 0x9c1c6109, 0x456279b3);
+    return PlayerPluginGUID;
+}
+
 
 IMediaSamples& FFFMPEGMediaPlayer::GetSamples()
 {

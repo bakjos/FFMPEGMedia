@@ -14,7 +14,7 @@
 #include "UObject/NameTypes.h"
 
 #if PLATFORM_WINDOWS
-	#include "WindowsHWrapper.h"
+	#include "Windows/WindowsHWrapper.h"
 #endif
 
 #if WITH_EDITOR
@@ -101,6 +101,13 @@ public:
 		}
 
 		return true;
+	}
+
+	virtual FGuid GetPlayerPluginGUID() const override
+	{
+		// {938BEEB4-2E88-450E-9C1C-6109456279B3}
+		static FGuid PlayerPluginGUID(0x938beeb4, 0x2e88450e, 0x9c1c6109, 0x456279b3);
+		return PlayerPluginGUID;
 	}
 
 	virtual TSharedPtr<IMediaPlayer, ESPMode::ThreadSafe> CreatePlayer(IMediaEventSink& EventSink) override

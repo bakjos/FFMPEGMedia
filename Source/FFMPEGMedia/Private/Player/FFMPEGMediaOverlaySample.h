@@ -99,7 +99,7 @@ public:
 		return Text;
 	}
 
-	virtual FTimespan GetTime() const override
+	virtual FMediaTimeStamp GetTime() const override
 	{
 		return Time;
 	}
@@ -118,7 +118,7 @@ private:
 	FText Text;
 
 	/** Presentation time for which the sample was generated. */
-	FTimespan Time;
+	FMediaTimeStamp Time;
 
     /** Position for the subtitle */
     FVector2D Position;

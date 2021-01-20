@@ -1,6 +1,6 @@
 
 #include "CondWait.h"
-#include "GenericPlatformProcess.h"
+#include "GenericPlatform/GenericPlatformProcess.h"
 
 CondWait::CondWait() {
     event = FGenericPlatformProcess::GetSynchEventFromPool();

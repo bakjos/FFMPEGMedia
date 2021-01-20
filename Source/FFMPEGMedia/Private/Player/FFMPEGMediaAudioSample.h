@@ -99,7 +99,7 @@ public:
 		return SampleRate;
 	}
 
-	virtual FTimespan GetTime() const override
+	virtual FMediaTimeStamp GetTime() const override
 	{
 		return Time;
 	}
@@ -119,7 +119,7 @@ private:
 	uint32 SampleRate;
 
 	/** Presentation time for which the sample was generated. */
-	FTimespan Time;
+	FMediaTimeStamp Time;
 };
 
 

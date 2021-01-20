@@ -75,7 +75,7 @@ public:
 		return Buffer.Num();
 	}
 
-	virtual FTimespan GetTime() const override
+	virtual FMediaTimeStamp GetTime() const override
 	{
 		return Time;
 	}
@@ -89,5 +89,5 @@ private:
 	FTimespan Duration;
 
 	/** Presentation time for which the sample was generated. */
-	FTimespan Time;
+	FMediaTimeStamp Time;
 };

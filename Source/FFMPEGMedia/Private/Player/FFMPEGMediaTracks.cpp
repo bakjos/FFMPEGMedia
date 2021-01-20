@@ -466,7 +466,7 @@ bool FFFMPEGMediaTracks::FetchAudio(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 		return false;
 	}
 
-	const FTimespan SampleTime = Sample->GetTime();
+	const FTimespan SampleTime = Sample->GetTime().Time;
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
@@ -497,7 +497,7 @@ bool FFFMPEGMediaTracks::FetchCaption(TRange<FTimespan> TimeRange, TSharedPtr<IM
 		return false;
 	}
 
-	const FTimespan SampleTime = Sample->GetTime();
+    const FTimespan SampleTime = Sample->GetTime().Time;
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
@@ -525,7 +525,7 @@ bool FFFMPEGMediaTracks::FetchMetadata(TRange<FTimespan> TimeRange, TSharedPtr<I
 		return false;
 	}
 
-	const FTimespan SampleTime = Sample->GetTime();
+    const FTimespan SampleTime = Sample->GetTime().Time;
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
@@ -552,7 +552,7 @@ bool FFFMPEGMediaTracks::FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMed
 		return false;
 	}
 
-	const FTimespan SampleTime = Sample->GetTime();
+	const FTimespan SampleTime = Sample->GetTime().Time;
 
 	if (!TimeRange.Overlaps(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration())))
 	{
@@ -577,6 +577,18 @@ void FFFMPEGMediaTracks::FlushSamples()
 	CaptionSampleQueue.RequestFlush();
 	MetadataSampleQueue.RequestFlush();
 	VideoSampleQueue.RequestFlush();
+}
+
+bool  FFFMPEGMediaTracks::PeekVideoSampleTime(FMediaTimeStamp& TimeStamp) {
+
+    TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> Sample;
+    if (!VideoSampleQueue.Peek(Sample))
+    {
+        return false;
+    }
+    TimeStamp = FMediaTimeStamp(Sample->GetTime());
+    return true;
+
 }
 
 

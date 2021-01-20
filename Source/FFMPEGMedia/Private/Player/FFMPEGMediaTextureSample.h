@@ -118,7 +118,7 @@ public:
 	}
 #endif //WITH_ENGINE
 
-	virtual FTimespan GetTime() const override
+	virtual FMediaTimeStamp GetTime() const override
 	{
 		return Time;
 	}
@@ -154,7 +154,7 @@ private:
 	uint32 Stride;
 
 	/** Presentation for which the sample was generated. */
-	FTimespan Time;
+	FMediaTimeStamp Time;
 };
 
 

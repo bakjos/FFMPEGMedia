@@ -20,7 +20,7 @@
 #include "MediaSampleQueue.h"
 #include "Templates/SharedPointer.h"
 
-#include "RunnableThread.h"
+#include "HAL/RunnableThread.h"
 
 
 class FFFMPEGMediaAudioSamplePool;
@@ -178,6 +178,8 @@ public:
      */
     void TickInput(FTimespan DeltaTime, FTimespan Timecode);
 
+
+
 public:
 
 	//~ IMediaSamples interface
@@ -187,6 +189,7 @@ public:
 	virtual bool FetchMetadata(TRange<FTimespan> TimeRange, TSharedPtr<IMediaBinarySample, ESPMode::ThreadSafe>& OutSample) override;
 	virtual bool FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& OutSample) override;
 	virtual void FlushSamples() override;
+	virtual bool PeekVideoSampleTime(FMediaTimeStamp& TimeStamp) override;
 
 public:
 
