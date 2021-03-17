@@ -14,6 +14,7 @@
 #include "UObject/Class.h"
 #include "IMediaBinarySample.h"
 #include "IMediaEventSink.h"
+#include "MediaPlayerOptions.h"
 
 
 #if WITH_ENGINE
@@ -233,10 +234,16 @@ void FFFMPEGMediaTracks::GetFlags(bool& OutMediaSourceChanged, bool& OutSelectio
 }
 
 
-void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
+void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url, const FMediaPlayerOptions* PlayerOptions )
 {
 	Shutdown();
-
+    
+    FMediaPlayerTrackOptions TrackOptions;
+    if (PlayerOptions != nullptr)
+    {
+        TrackOptions = PlayerOptions->Tracks;
+    }
+    
    
 	UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Tracks: %p: Initializing (media source %p)"), this, ic);
 
@@ -287,7 +294,7 @@ void FFFMPEGMediaTracks::Initialize(AVFormatContext* ic, const FString& Url)
 
     for (int i = 0; i < (int)ic->nb_streams; i++) {
         AVStream *st = ic->streams[i];
-        bool streamAdded = AddStreamToTracks(i, false, Info);
+        bool streamAdded = AddStreamToTracks(i, false, TrackOptions, Info);
         AllStreamsAdded &= streamAdded;
         if ( streamAdded) {
             totalStreams++;
@@ -1129,7 +1136,7 @@ bool FFFMPEGMediaTracks::SetRate(float Rate) {
 /* FFFMPEGMediaTracks implementation
  *****************************************************************************/
 
-bool FFFMPEGMediaTracks::AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevice, FString& OutInfo)
+bool FFFMPEGMediaTracks::AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevice, const FMediaPlayerTrackOptions& TrackOptions, FString& OutInfo)
 {
 	OutInfo += FString::Printf(TEXT("Stream %i\n"), StreamIndex);
 
@@ -1276,6 +1283,10 @@ bool FFFMPEGMediaTracks::AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevic
 
 	
 	Track->StreamIndex = StreamIndex;
+    
+    if (MediaType == AVMEDIA_TYPE_SUBTITLE && TrackOptions.Caption == INDEX_NONE) {
+        return false;
+    }
 
 	return true;
 }
