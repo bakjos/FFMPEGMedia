@@ -142,19 +142,23 @@ IMediaView& FFFMPEGMediaPlayer::GetView()
 	return *this;
 }
 
+bool FFFMPEGMediaPlayer::Open(const FString& Url, const IMediaOptions* Options, const FMediaPlayerOptions* PlayerOptions) {
+    Close();
+
+    if (Url.IsEmpty())
+    {
+        return false;
+    }
+
+    const bool Precache = (Options != nullptr) ? Options->GetMediaOption("PrecacheFile", false) : false;
+
+    return InitializePlayer(nullptr, Url, Precache, PlayerOptions);
+}
+
 
 bool FFFMPEGMediaPlayer::Open(const FString& Url, const IMediaOptions* Options)
 {
-	Close();
-
-	if (Url.IsEmpty())
-	{
-		return false;
-	}
-
-	const bool Precache = (Options != nullptr) ? Options->GetMediaOption("PrecacheFile", false) : false;
-
-	return InitializePlayer(nullptr, Url, Precache);
+    return Open(Url, Options, nullptr);
 }
 
 
@@ -174,7 +178,7 @@ bool FFFMPEGMediaPlayer::Open(const TSharedRef<FArchive, ESPMode::ThreadSafe>& A
         return false;
     }
 
-    return InitializePlayer(Archive, OriginalUrl, false);
+    return InitializePlayer(Archive, OriginalUrl, false, nullptr);
 }
 
 
@@ -229,7 +233,7 @@ void FFFMPEGMediaPlayer::TickInput(FTimespan DeltaTime, FTimespan Timecode)
 /* FFFMPEGMediaPlayer implementation
  *****************************************************************************/
 
-bool FFFMPEGMediaPlayer::InitializePlayer(const TSharedPtr<FArchive, ESPMode::ThreadSafe>& Archive, const FString& Url, bool Precache)
+bool FFFMPEGMediaPlayer::InitializePlayer(const TSharedPtr<FArchive, ESPMode::ThreadSafe>& Archive, const FString& Url, bool Precache, const FMediaPlayerOptions* PlayerOptions )
 {
 	UE_LOG(LogFFMPEGMedia, Verbose, TEXT("Player %llx: Initializing %s (archive = %s, precache = %s)"), this, *Url, Archive.IsValid() ? TEXT("yes") : TEXT("no"), Precache ? TEXT("yes") : TEXT("no"));
 
@@ -243,7 +247,7 @@ bool FFFMPEGMediaPlayer::InitializePlayer(const TSharedPtr<FArchive, ESPMode::Th
 	const EAsyncExecution Execution = Precache ? EAsyncExecution::Thread : EAsyncExecution::ThreadPool;
     
     
-    TFunction <void()>  Task =  [Archive, Url, Precache, TracksPtr = TWeakPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe>(Tracks), ThisPtr=this]()
+    TFunction <void()>  Task =  [Archive, Url, Precache, PlayerOptions, TracksPtr = TWeakPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe>(Tracks), ThisPtr=this]()
     {
         TSharedPtr<FFFMPEGMediaTracks, ESPMode::ThreadSafe> PinnedTracks = TracksPtr.Pin();
         
@@ -251,7 +255,7 @@ bool FFFMPEGMediaPlayer::InitializePlayer(const TSharedPtr<FArchive, ESPMode::Th
         {
             AVFormatContext* context = ThisPtr->ReadContext(Archive, Url, Precache);
             if (context) {
-                PinnedTracks->Initialize(context, Url);
+                PinnedTracks->Initialize(context, Url, PlayerOptions);
             }
         }
     };

@@ -19,6 +19,7 @@
 #include "Math/IntPoint.h"
 #include "MediaSampleQueue.h"
 #include "Templates/SharedPointer.h"
+#include "MediaPlayerOptions.h"
 
 #include "HAL/RunnableThread.h"
 
@@ -144,7 +145,7 @@ public:
 	 * @param Url The media source URL.
 	 * @see IsInitialized, Shutdown
 	 */
-	void Initialize(AVFormatContext *ic, const FString& Url);
+	void Initialize(AVFormatContext *ic, const FString& Url, const FMediaPlayerOptions* PlayerOptions );
 
 	/**
 	 * Reinitialize the track collection
@@ -241,7 +242,7 @@ protected:
 	 * @return true on success, false otherwise.
 	 * @see AddTrackToTopology
 	 */
-	bool AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevice, FString& OutInfo);
+	bool AddStreamToTracks(uint32 StreamIndex, bool IsVideoDevice, const FMediaPlayerTrackOptions& TrackOptions, FString& OutInfo);
 
 	/**
 	 * Add the given track to the specified playback topology.
