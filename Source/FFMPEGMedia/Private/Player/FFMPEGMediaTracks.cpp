@@ -2546,8 +2546,8 @@ int FFFMPEGMediaTracks::AudioRenderThread() {
             RenderAudio();
             int64_t endTime =  av_gettime_relative();
             int64_t dif = endTime - startTime;
-            if ( dif < 33333) {
-                av_usleep(33333 - dif);
+            if ( dif < 32333) {
+                av_usleep(32333 - dif);
             }
             startTime = endTime;
         }
