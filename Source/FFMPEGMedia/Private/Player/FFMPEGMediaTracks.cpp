@@ -2516,10 +2516,13 @@ void FFFMPEGMediaTracks::StartAudioRenderThread() {
 }
 
 void FFFMPEGMediaTracks::StopAudioRenderThread() {
-    if (audioRunning && audioRenderThread) {
-        audioRenderThread = nullptr;
-    }
-    audioRunning = false;
+	bool wasAudioRunning = audioRunning;
+	audioRunning = false;
+
+	if (audioRenderThread && wasAudioRunning) {
+		audioRenderThread->WaitForCompletion();
+		audioRenderThread = nullptr;
+	}
 }
 
 int FFFMPEGMediaTracks::DisplayThread() {
